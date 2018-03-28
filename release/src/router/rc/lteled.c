@@ -41,19 +41,26 @@ enum {
 
 int lteled_main(int argc, char **argv)
 {
-#ifndef TMAC1900V2
-	char line[128];
-#endif
 	int percent = 0, old_percent = -100;
-	int usb_modem_act_signal = 0;
+	int modem_signal = 0;
 	int cnt = 0;
 	int state = -1;
 	int lighting_time = 0;
+#ifdef RT4GAC55U
 	int lighting_cnt = 0;
+#endif
 	int long_period = 1;
+	int old_state = state;
+	int usb_unit;
+	int sim_state;
 
 	signal(SIGALRM, catch_sig);
-	nvram_set_int("usb_modem_act_signal", usb_modem_act_signal);
+	nvram_set_int("usb_modem_act_signal", modem_signal);
+
+	if((usb_unit = get_usbif_dualwan_unit()) == WAN_UNIT_NONE){
+		_dprintf("lteled: in the current dual wan mode, didn't support the USB modem.\n");
+		return 0;
+	}
 
 	while (1)
 	{
@@ -63,20 +70,17 @@ int lteled_main(int argc, char **argv)
 			continue;
 		}
 
+		if(strcmp(nvram_safe_get("usb_modem_act_type"), "gobi")){
+			SET_LONG_PERIOD();
+			pause();
+			continue;
+		}
+
 		if (lighting_time == 0 && --cnt <= 0)
 		{ //every 3 seconds
-			int old_state = state;
-			int usb_unit = get_usbif_dualwan_unit();
-			int wan_state;
-			char tmp[100], prefix[] = "wanXXXXXXXXXX_";
+			old_state = state;
 
-			if(usb_unit == -1)
-				continue;
-
-			snprintf(prefix, sizeof(prefix), "wan%d_", usb_unit);
-			wan_state = nvram_get_int(strcat_r(prefix, "state_t", tmp));
-
-			int sim_state = nvram_get_int("usb_modem_act_sim");
+			sim_state = nvram_get_int("usb_modem_act_sim");
 			if(state != STATE_CONNECTED && sim_state != 1 && sim_state != 2 && sim_state != 3)
 			{ //Sim Card not ready
 				if(state != STATE_SIM_NOT_READY)
@@ -88,18 +92,13 @@ int lteled_main(int argc, char **argv)
 					led_control(LED_SIG1, LED_OFF);
 					led_control(LED_SIG2, LED_OFF);
 					led_control(LED_SIG3, LED_OFF);
-#ifdef TMAC1900V2
-					led_control(LED_SIG4, LED_OFF);
+#ifdef RT4GAC68U
 					led_control(LED_3G, LED_OFF);
 #endif
 				}
 			}
-			else if(wan_state != WAN_STATE_CONNECTED
-#ifdef TMAC1900V2
-					|| (percent = nvram_get_int("usb_modem_act_signal")*20) < 0
-#else
-					|| (percent = Gobi_SignalQuality_Percent(Gobi_SignalQuality_Int())) < 0
-#endif
+			else if(!is_wan_connect(usb_unit)
+					|| (percent = nvram_get_int("usb_modem_act_signal")*25) < 0
 					)
 			{ //Not connected
 				if(state != STATE_CONNECTING)
@@ -110,62 +109,39 @@ int lteled_main(int argc, char **argv)
 					led_control(LED_SIG1, LED_OFF);
 					led_control(LED_SIG2, LED_OFF);
 					led_control(LED_SIG3, LED_OFF);
-#ifdef TMAC1900V2
-					led_control(LED_SIG4, LED_OFF);
-#endif
 				}
 			}
 			else
 			{ //connect and has signal strength
-#ifdef TMAC1900V2
-				if(strcmp(nvram_safe_get("usb_modem_act_operation"), "LTE")){
-					led_control(LED_3G, LED_ON);
-					led_control(LED_LTE, LED_OFF);
-				}
-				else{
+#ifdef RT4GAC68U
+				if(!strcmp(nvram_safe_get("usb_modem_act_operation"), "LTE")){
 					led_control(LED_3G, LED_OFF);
 					led_control(LED_LTE, LED_ON);
+				}
+				else{
+					led_control(LED_3G, LED_ON);
+					led_control(LED_LTE, LED_OFF);
 				}
 #endif
 
 				if (state != STATE_CONNECTED)
 				{
 					state = STATE_CONNECTED;
-#ifndef TMAC1900V2
+#ifdef RT4GAC55U
 					led_control(LED_LTE, LED_ON);
 #endif
 				}
-#ifdef TMAC1900V2
-				if ((percent/20) != (old_percent/20))
-				{
-					led_control(LED_SIG1, (percent >= 20)? LED_ON : LED_OFF);
-					led_control(LED_SIG2, (percent >= 40)? LED_ON : LED_OFF);
-					led_control(LED_SIG3, (percent >= 60)? LED_ON : LED_OFF);
-					led_control(LED_SIG4, (percent >= 80)? LED_ON : LED_OFF);
-					old_percent = percent;
-				}
-#else
 				if ((percent/25) != (old_percent/25))
 				{
-					led_control(LED_SIG1, (percent > 25)? LED_ON : LED_OFF);
-					led_control(LED_SIG2, (percent > 50)? LED_ON : LED_OFF);
+					led_control(LED_SIG1, (percent > 0)? LED_ON : LED_OFF);
+					led_control(LED_SIG2, (percent > 25)? LED_ON : LED_OFF);
 					led_control(LED_SIG3, (percent > 75)? LED_ON : LED_OFF);
 					old_percent = percent;
 				}
-#endif
 			}
 
 			if (old_state != state)
 				cprintf("%s: state(%d --> %d)\n", __func__, old_state, state);
-
-#ifndef TMAC1900V2
-			int temp = (percent<=0)? 0: (percent>100)? 5: (percent -1)/20 + 1;
-			if (usb_modem_act_signal != temp)
-			{
-				usb_modem_act_signal = temp;
-				nvram_set_int("usb_modem_act_signal", usb_modem_act_signal);
-			}
-#endif
 
 			if(NEED_LONG_PERIOD)
 			{
@@ -177,6 +153,7 @@ int lteled_main(int argc, char **argv)
 			}
 		}
 
+#ifdef RT4GAC55U
 		if (long_period || (cnt % 10) == 0)
 		{ //every second
 			if (button_pressed(BTN_LTE))
@@ -185,9 +162,11 @@ int lteled_main(int argc, char **argv)
 				SET_SHORT_PERIOD();
 			}
 		}
+#endif
 
 		if (!long_period)
 		{
+#ifdef RT4GAC55U
 			if (lighting_time > 0)			//handle BTN_LTE
 			{
 				void led_control_lte(int percent);
@@ -211,16 +190,18 @@ int lteled_main(int argc, char **argv)
 					led_control_lte(percent);
 				}
 			}
-			else if (state == STATE_CONNECTING)	//handle lte led blink
+			else
+#endif
+			if (state == STATE_CONNECTING)	//handle lte led blink
 			{
-#ifdef TMAC1900V2
-				if(strcmp(nvram_safe_get("usb_modem_act_operation"), "LTE")){
-					led_control(LED_3G, ((cnt % 5) < 3)? LED_ON : LED_OFF);
-					led_control(LED_LTE, LED_OFF);
-				}
-				else{
+#ifdef RT4GAC68U
+				if(!strcmp(nvram_safe_get("usb_modem_act_operation"), "LTE")){
 					led_control(LED_3G, LED_OFF);
 					led_control(LED_LTE, ((cnt % 5) < 3)? LED_ON : LED_OFF);
+				}
+				else{
+					led_control(LED_3G, ((cnt % 5) < 3)? LED_ON : LED_OFF);
+					led_control(LED_LTE, LED_OFF);
 				}
 #else
 				led_control(LED_LTE, ((cnt % 5) < 3)? LED_ON : LED_OFF);
