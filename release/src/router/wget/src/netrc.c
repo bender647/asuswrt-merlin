@@ -1,6 +1,6 @@
 /* Read and parse the .netrc file to get hosts, accounts, and passwords.
-   Copyright (C) 1996, 2007, 2008, 2009, 2010, 2011, 2015 Free Software
-   Foundation, Inc.
+   Copyright (C) 1996, 2007-2011, 2015, 2018 Free Software Foundation,
+   Inc.
 
 This file is part of GNU Wget.
 
@@ -42,7 +42,11 @@ as that of the covered work.  */
 #include "netrc.h"
 #include "init.h"
 
-#define NETRC_FILE_NAME ".netrc"
+#ifdef WINDOWS
+#  define NETRC_FILE_NAME "_netrc"
+#else
+#  define NETRC_FILE_NAME ".netrc"
+#endif
 
 static acc_t *netrc_list;
 
@@ -457,6 +461,9 @@ free_netrc(acc_t *l)
 #ifdef STANDALONE
 #include <sys/types.h>
 #include <sys/stat.h>
+#include "exits.h"
+
+const char *program_argstring = NULL; /* Needed by warc.c */
 
 int
 main (int argc, char **argv)

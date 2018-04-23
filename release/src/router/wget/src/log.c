@@ -1,6 +1,5 @@
 /* Messages logging.
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2008, 2009, 2010, 2011, 2015 Free Software Foundation, Inc.
+   Copyright (C) 1998-2011, 2015, 2018 Free Software Foundation, Inc.
 
 This file is part of GNU Wget.
 
@@ -344,7 +343,9 @@ get_warc_log_fp (void)
     return NULL;
   if (warclogfp)
     return warclogfp;
-  return NULL;
+  if (logfp)
+    return NULL;
+  return stderr;
 }
 
 /* Sets the file descriptor for the secondary log file.  */
@@ -962,7 +963,9 @@ check_redirect_output (void)
    * we check if process is fg or bg before every line is printed.*/
   if (!redirect_request_signal_name && shell_is_interactive && !opt.lfilename)
     {
-      if (tcgetpgrp (STDIN_FILENO) != getpgrp ())
+      pid_t foreground_pgrp = tcgetpgrp (STDIN_FILENO);
+
+      if (foreground_pgrp != -1 && foreground_pgrp != getpgrp ())
         {
           /* Process backgrounded */
           redirect_output (true,NULL);

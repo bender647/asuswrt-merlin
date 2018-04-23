@@ -1,7 +1,6 @@
 /* HTTP support.
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
-   2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2014, 2015 Free
-   Software Foundation, Inc.
+   Copyright (C) 1996-2012, 2014-2015, 2018 Free Software Foundation,
+   Inc.
 
 This file is part of GNU Wget.
 
@@ -104,7 +103,8 @@ static struct cookie_jar *wget_cookie_jar;
 #define H_REDIRECTED(x) ((x) == HTTP_STATUS_MOVED_PERMANENTLY          \
                          || (x) == HTTP_STATUS_MOVED_TEMPORARILY       \
                          || (x) == HTTP_STATUS_SEE_OTHER               \
-                         || (x) == HTTP_STATUS_TEMPORARY_REDIRECT)
+                         || (x) == HTTP_STATUS_TEMPORARY_REDIRECT      \
+                         || (x) == HTTP_STATUS_PERMANENT_REDIRECT)
 
 /* HTTP/1.0 status codes from RFC1945, provided for reference.  */
 /* Successful 2xx.  */
@@ -121,6 +121,7 @@ static struct cookie_jar *wget_cookie_jar;
 #define HTTP_STATUS_SEE_OTHER             303 /* from HTTP/1.1 */
 #define HTTP_STATUS_NOT_MODIFIED          304
 #define HTTP_STATUS_TEMPORARY_REDIRECT    307 /* from HTTP/1.1 */
+#define HTTP_STATUS_PERMANENT_REDIRECT    308 /* from HTTP/1.1 */
 
 /* Client error 4xx.  */
 #define HTTP_STATUS_BAD_REQUEST           400
@@ -1867,7 +1868,7 @@ initialize_request (const struct url *u, struct http_stat *hs, int *dt, struct u
   if (*dt & SEND_NOCACHE)
     {
       /* Cache-Control MUST be obeyed by all HTTP/1.1 caching mechanisms...  */
-      request_set_header (req, "Cache-Control", "no-cache, must-revalidate", rel_none);
+      request_set_header (req, "Cache-Control", "no-cache", rel_none);
 
       /* ... but some HTTP/1.0 caches doesn't implement Cache-Control.  */
       request_set_header (req, "Pragma", "no-cache", rel_none);
@@ -3711,23 +3712,42 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
       else if (hs->local_encoding == ENC_GZIP
                && opt.compression != compression_none)
         {
+          const char *p;
+
           /* Make sure the Content-Type is not gzip before decompressing */
-          const char * p = strchr (type, '/');
-          if (p == NULL)
+          if (type)
             {
-              hs->remote_encoding = ENC_GZIP;
-              hs->local_encoding = ENC_NONE;
-            }
-          else
-            {
-              p++;
-              if (c_tolower(p[0]) == 'x' && p[1] == '-')
-                p += 2;
-              if (0 != c_strcasecmp (p, "gzip"))
+              p = strchr (type, '/');
+              if (p == NULL)
                 {
                   hs->remote_encoding = ENC_GZIP;
                   hs->local_encoding = ENC_NONE;
                 }
+              else
+                {
+                  p++;
+                  if (c_tolower(p[0]) == 'x' && p[1] == '-')
+                    p += 2;
+                  if (0 != c_strcasecmp (p, "gzip"))
+                    {
+                      hs->remote_encoding = ENC_GZIP;
+                      hs->local_encoding = ENC_NONE;
+                    }
+                }
+            }
+          else
+            {
+               hs->remote_encoding = ENC_GZIP;
+               hs->local_encoding = ENC_NONE;
+            }
+
+          /* don't uncompress if a file ends with '.gz' or '.tgz' */
+          if (hs->remote_encoding == ENC_GZIP
+              && (p = strrchr(u->file, '.'))
+              && (c_strcasecmp(p, ".gz") == 0 || c_strcasecmp(p, ".tgz") == 0))
+            {
+               DEBUGP (("Enabling broken server workaround. Will not decompress this GZip file.\n"));
+               hs->remote_encoding = ENC_NONE;
             }
         }
 #endif
@@ -3821,6 +3841,7 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
           switch (statcode)
             {
             case HTTP_STATUS_TEMPORARY_REDIRECT:
+            case HTTP_STATUS_PERMANENT_REDIRECT:
               retval = NEWLOCATION_KEEP_POST;
               goto cleanup;
             case HTTP_STATUS_MOVED_PERMANENTLY:
@@ -3843,8 +3864,6 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
         }
     }
 
-  set_content_type (dt, type);
-
   if (cond_get)
     {
       if (statcode == HTTP_STATUS_NOT_MODIFIED)
@@ -3858,6 +3877,8 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
           goto cleanup;
         }
     }
+
+  set_content_type (dt, type);
 
   if (opt.adjust_extension)
     {
@@ -3958,11 +3979,16 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
       hs->res = 0;
       /* Mark as successfully retrieved. */
       *dt |= RETROKF;
-      if (statcode == HTTP_STATUS_RANGE_NOT_SATISFIABLE)
+
+      /* Try to maintain the keep-alive connection. It is often cheaper to
+       * consume some bytes which have already been sent than to negotiate
+       * a new connection. However, if the body is too large, or we don't
+       * care about keep-alive, then simply terminate the connection */
+      if (keep_alive &&
+          skip_short_body (sock, contlen, chunked_transfer_encoding))
         CLOSE_FINISH (sock);
       else
-        CLOSE_INVALIDATE (sock);        /* would be CLOSE_FINISH, but there
-                                   might be more bytes in the body. */
+        CLOSE_INVALIDATE (sock);
       retval = RETRUNNEEDED;
       goto cleanup;
     }

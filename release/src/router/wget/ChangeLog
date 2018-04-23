@@ -1,3 +1,167 @@
+2018-01-21  Darshit Shah  <darnir@gnu.org>
+
+	Update NEWS file for new release
+
+	Fix typo in documentation
+
+2018-01-21  Darshit Shah  <darnir@gnu.org>
+
+	Switch off compression by default
+	Gzip compression has a number of bugs which need to be ironed out before
+	we can support it by default. Some of these stem from a misunderstanding
+	of the HTTP spec, but a lot of them are also due to many web servers not
+	being compliant with RFC 7231.
+
+	With this commit, I am marking GZip compression support as experimental
+	in GNU Wget pending further investigation and the addition of tests.
+
+	* src/init.c (defaults): Switch of compression support by default
+	* docs/wget.texi: State that compression is experimental
+
+2018-01-21  Darshit Shah  <darnir@gnu.org>
+
+	Pull gnulib module forward
+
+	Revert "* src/init.c (defaults): Set compression_none as the default compression"
+	This reverts commit 8283ac08467016283277578b96533febb8ce1adb.
+
+	* src/init.c (defaults): Set compression_none as the default compression
+
+2018-01-20  Reiji  <gey3dr@gmail.com>
+
+	* src/http.c (gethttp): Fix bug that prevented all files from being decompressed
+
+2018-01-19  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	* src/host.c (sufmatch): Fix to domain matching
+
+2018-01-17  Gisle Vanem  <gvanem@yahoo.no>
+
+	* src/netrc.c: Fix Standalone compilation of netrc file
+
+2018-01-14  Darshit Shah  <darnir@gnu.org>
+
+	* NEWS: Update NEWS file for new release
+
+	* bootstrap: Use the faster gnulib-tool.py script if possible
+
+	Sync the bootstrap script from gnulib
+
+	Update Copyright years
+
+	Replace HTTP urls with HTTPS where valid
+
+	Update gnulib
+
+	* src/netrc.c: Search for the correct netrc file on Windows
+
+2018-01-10  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	* src/http.c: Exclude *.gz and *.tgz from decompression
+
+2017-12-31  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	* src/utils.c (wg_pin_peer_pubkey): Fix format warning
+
+2017-12-31  Peter Wu  <peter@lekensteyn.nl>
+
+	Avoid redirecting output to file when tcgetpgrp fails
+	* src/log.c (check_redirect_output): tcgetpgrp can return -1 (ENOTTY),
+	be sure to check whether a valid controlling terminal exists before
+	redirecting.
+
+	Fixes: #51181
+
+2017-12-11  Darshit Shah  <darnir@gnu.org>
+
+	Add new test for 416 responses
+	* testenv/server/http/http_server.py: If there are multiple requests in
+	which the requested range is unsatisfiable, then send a body in the in
+	the 2nd response onwards
+	* testenv/Test-416.py: New test to check how Wget handles 416 responses
+
+2017-12-08  Darshit Shah  <darnir@gnu.org>
+
+	Don't assume a 416 response has no body
+	* http.c(gethttp): In case of a 416 response, try to drain the socket of
+	any bytes before reusing the connection
+
+	Reported-By: Iru Cai <mytbk920423@gmail.com>
+
+2017-11-26  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	Support building with OpenSSL 1.1 w/o deprecated features
+	* src/openssl.c (ssl_init): Fix code for the subject's issue
+
+	Reported-by: Matthew Thode
+
+2017-11-25  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	Avoid link conversion after 304 Not Modified
+	* src/http.c (gethttp): Handle 304 before setting document content type
+
+	Fixes: #52404
+	Reported-by: Ben Fuchs
+
+2017-11-16  YX Hao  <lifenjoiner@163.com>
+
+	Fix printing mutibyte chars as unprintable chars on Windows
+	* src/log.c (get_warc_log_fp): Fix return value to stderr
+	* src/main.c (main): Init logging as soon as possible,
+	  fix locale/charset on Windows
+
+2017-11-16  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	* tests/Test-https-weboftrust.px: Fix/add sslport
+
+2017-11-15  YX Hao  <lifenjoiner@163.com>
+
+	Convert remote path to local encoding
+	* src/url.c (url_file_name): Convert remote path to local encoding
+
+2017-11-10  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	Do not use must-revalidate in Cache-Control header
+	As the bug report states, 'must-revalidate' is a request directive.
+
+	Fixes #52379
+
+2017-11-06  Darshit Shah  <darnir@gnu.org>
+
+	Fix Segfault due to derefencing null ptr
+	* src/http.c(gethttp): When Encoding is gzip, ensure that the
+	Content-Type Header was actually seen. Without this, the "type" variable
+	is null causing a Segfault.
+
+	Reported-By: Noël Köthe <noel@debian.org>
+
+2017-11-03  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	* src/http.c: Fix H_REDIRECTED
+
+	* src/http.c: Add support for HTTP status code 308
+
+2017-10-30  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	Fix uninitialized value messages in tests
+	* tests/Test-https-*.px: Use correct variable in error message
+
+	Reported-by: Jeffrey Walton
+
+2017-10-30  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	Ignore dirmngr.conf, gpg.conf in test directories
+	* testenv/conf/expected_files.py: Ignore dirmngr.conf, gpg.conf
+
+	Libgpgme creates certain files if $HOME doesn't contain the .gnupg directory.
+	These files disturb some metalink tests if we don't ignore them.
+
+	Reported-by: Arkadiusz Miśkiewicz <arekm@maven.pl>
+
+2017-10-27  Tim Rühsen  <tim.ruehsen@gmx.de>
+
+	* contrib/release: Cleanup, use lzip instead of xz
+
 2017-10-26  Tim Rühsen  <tim.ruehsen@gmx.de>
 
 	Fix heap overflow in HTTP protocol handling (CVE-2017-13090)

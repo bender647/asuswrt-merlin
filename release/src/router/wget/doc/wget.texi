@@ -31,9 +31,8 @@ This file documents the GNU Wget utility for downloading network
 data.
 
 @c man begin COPYRIGHT
-Copyright @copyright{} 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
-2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2015 Free Software
-Foundation, Inc.
+Copyright @copyright{} 1996-2011, 2015, 2018 Free Software Foundation,
+Inc.
 
 @iftex
 Permission is granted to make and distribute verbatim copies of
@@ -1544,10 +1543,13 @@ If @samp{auto} or @samp{gzip} are specified, Wget asks the server to
 compress the file using the gzip compression format. If the server
 compresses the file and responds with the @code{Content-Encoding}
 header field set appropriately, the file will be decompressed
-automatically. This is the default.
+automatically.
 
 If @samp{none} is specified, wget will not ask the server to compress
-the file and will not decompress any server responses.
+the file and will not decompress any server responses. This is the default.
+
+Compression support is currently experimental. In case it is turned on,
+please report any bugs to @code{bug-wget@@gnu.org}.
 
 @cindex redirect
 @item --max-redirect=@var{number}

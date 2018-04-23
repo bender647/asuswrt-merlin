@@ -42,7 +42,7 @@ $ENV{'HOSTALIASES'} = "$srcdir/certs/wgethosts";
 my $addr = gethostbyname($testhostname);
 unless ($addr)
 {
-    warn "Failed to resolve $addr, using $srcdir/certs/wgethosts\n";
+    warn "Failed to resolve $testhostname, using $srcdir/certs/wgethosts\n";
     exit 77;
 }
 unless (inet_ntoa($addr) =~ "127.0.0.1")
@@ -99,7 +99,8 @@ my $sslsock = SSLTest->new(cmdline   => $cmdline,
                            output    => \%expected_downloaded_files,
                            certfile  => $usrcrt,
                            keyfile   => $usrkey,
-                           lhostname => $testhostname);
+                           lhostname => $testhostname,
+                           sslport   => $port);
 if ($sslsock->run() == 0)
 {
   exit 0;

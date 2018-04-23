@@ -1,7 +1,5 @@
 /* Command line parsing.
-   Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
-   2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015 Free
-   Software Foundation, Inc.
+   Copyright (C) 1996-2015, 2018 Free Software Foundation, Inc.
 
 This file is part of GNU Wget.
 
@@ -37,7 +35,7 @@ as that of the covered work.  */
 #include <string.h>
 #include <signal.h>
 #include <spawn.h>
-#ifdef ENABLE_NLS
+#if defined(ENABLE_NLS) || defined(WINDOWS)
 # include <locale.h>
 #endif
 #include <assert.h>
@@ -74,6 +72,9 @@ as that of the covered work.  */
 #ifdef WINDOWS
 # include <io.h>
 # include <fcntl.h>
+#ifndef ENABLE_NLS
+# include <mbctype.h>
+#endif
 #endif
 
 #ifdef __VMS
@@ -148,6 +149,14 @@ i18n_initialize (void)
   /* Set the text message domain.  */
   bindtextdomain ("wget", LOCALEDIR);
   textdomain ("wget");
+#elif defined WINDOWS
+  char MBCP[16] = "";
+  int CP;
+
+  CP = _getmbcp(); /* Consider it's different from default. */
+  if (CP > 0)
+    snprintf(MBCP, sizeof(MBCP), ".%d", CP);
+  setlocale(LC_ALL, MBCP);
 #endif /* ENABLE_NLS */
 }
 
@@ -768,7 +777,7 @@ HTTP options:\n"),
        --header=STRING             insert STRING among the headers\n"),
 #ifdef HAVE_LIBZ
     N_("\
-       --compression=TYPE          choose compression, one of auto, gzip and none\n"),
+       --compression=TYPE          choose compression, one of auto, gzip and none. (default: none)\n"),
 #endif
     N_("\
        --max-redirect              maximum redirections allowed per page\n"),
@@ -1529,6 +1538,9 @@ main (int argc, char **argv)
 
   nurl = argc - optind;
 
+  /* Initialize logging ASAP.  */
+  log_init (opt.lfilename, append_to_log);
+
   /* If we do not have Debug support compiled in AND Wget is invoked with the
    * --debug switch, instead of failing, we silently turn it into a no-op. For
    *  this no-op, we explicitly set opt.debug to false and hence none of the
@@ -1634,8 +1646,8 @@ for details.\n\n"));
            {
               /* Check if output file exists; if it does, exit. */
               logprintf (LOG_VERBOSE,
-                         _("File `%s' already there; not retrieving.\n"),
-                         opt.output_document);
+                         _("File %s already there; not retrieving.\n"),
+                         quote (opt.output_document));
               exit (WGET_EXIT_GENERIC_ERROR);
            }
     }
@@ -1867,7 +1879,12 @@ for details.\n\n"));
   sock_init();
 #else
   if (opt.background)
-    fork_to_background ();
+    {
+      bool logfile_changed = fork_to_background ();
+
+      if (logfile_changed)
+        log_init (opt.lfilename, append_to_log);
+    }
 #endif
 
   /* Initialize progress.  Have to do this after the options are
@@ -1891,9 +1908,6 @@ for details.\n\n"));
         url[i] = xstrdup (argv[optind]);
     }
   url[i] = NULL;
-
-  /* Initialize logging.  */
-  log_init (opt.lfilename, append_to_log);
 
   /* Open WARC file. */
   if (opt.warc_filename != 0)
