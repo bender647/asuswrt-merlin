@@ -32,7 +32,8 @@ sha512t
 shatest
 ssltest
 wp_test
-
+x509_time_test
+fatalerrtest
 srptest
 v3nametest
 heartbeat_test
