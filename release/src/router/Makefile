@@ -400,9 +400,9 @@ obj-$(RTCONFIG_BWDPI) += bwdpi_sqlite
 obj-$(RTCONFIG_BWDPI) += bwdpi_bin
 #obj-$(RTCONFIG_SPEEDTEST) += curl
 obj-y += curl
-obj-y += curl-7.59.0
+obj-y += curl-7.65.3
 
-obj-$(RTCONFIG_SPEEDTEST) += curl-7.59.0
+obj-$(RTCONFIG_SPEEDTEST) += curl-7.65.3
 
 obj-$(RTCONFIG_TRAFFIC_LIMITER) += sqlite
 obj-$(RTCONFIG_TRAFFIC_LIMITER) += traffic_limiter
@@ -4008,15 +4008,15 @@ curl-clean:
 	[ ! -f curl/Makefile ] || $(MAKE) -C curl clean
 	@rm -f curl/Makefile
 
-# curl-7.59.0 static program binary only
-curl-7.59.0: openssl zlib curl-7.59.0/Makefile
+# curl-7.65.3 static program binary only
+curl-7.65.3: openssl zlib curl-7.65.3/Makefile
 	@$(MAKE) -C $@ $(PARALLEL_BUILD) && $(MAKE) $@-stage
 
-curl-7.59.0/Makefile: curl-7.59.0/configure
-	@cd curl-7.59.0 && $(CONFIGURE) CC=$(CC) \
+curl-7.65.3/Makefile: curl-7.65.3/configure
+	@cd curl-7.65.3 && $(CONFIGURE) CC=$(CC) \
 		CFLAGS="-Os -Wall -ffunction-sections -fdata-sections" \
 		--prefix=/usr --bindir=/usr/sbin --libdir=/usr/lib \
-		--enable-http --with-ssl=$(TOP)/openssl/ssl \
+		--enable-http --with-ssl=$(TOP)/openssl \
 		--with-zlib=$(TOP)/zlib \
 		$(if $(RTCONFIG_IPV6),--enable-ipv6) \
 		--disable-gopher --disable-dict --disable-telnet \
@@ -4025,25 +4025,25 @@ curl-7.59.0/Makefile: curl-7.59.0/configure
 		LDFLAGS='$(LDFLAGS) -L$(TOP)/openssl -L$(TOP)/zlib' \
 		LIBS='-lcrypto -lssl -ldl -lz' \
 		--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt \
-		--program-suffix=-7.59.0 --disable-shared
+		--program-suffix=-7.65.3 --disable-shared
 
-curl-7.59.0-install:
+curl-7.65.3-install:
 	@$(SEP)
-	#install -D curl-7.59.0/lib/.libs/libcurl.so.4.4.0 $(INSTALLDIR)/curl/usr/lib/libcurl.so.4.4.0
+	#install -D curl-7.65.3/lib/.libs/libcurl.so.4.4.0 $(INSTALLDIR)/curl/usr/lib/libcurl.so.4.4.0
 	#$(STRIP) $(INSTALLDIR)/curl/usr/lib/libcurl.so.4.4.0
 	#cd $(INSTALLDIR)/curl/usr/lib && ln -sf libcurl.so.4.4.0 libcurl.so && ln -sf libcurl.so.4.4.0 libcurl.so.4
-	#install -D curl-7.59.0/src/.libs/curl-7.59 $(INSTALLDIR)/curl/usr/sbin/curl-7.59
-	install -D curl-7.59.0/src/curl $(INSTALLDIR)/curl/usr/sbin/curl
+	#install -D curl-7.65.3/src/.libs/curl-7.59 $(INSTALLDIR)/curl/usr/sbin/curl-7.59
+	install -D curl-7.65.3/src/curl $(INSTALLDIR)/curl/usr/sbin/curl
 	$(STRIP) $(INSTALLDIR)/curl/usr/sbin/curl
 
-curl-7.59.0-clean:
-	[ ! -f curl-7.59.0/Makefile ] || $(MAKE) -C curl-7.59.0 clean
-	@rm -f curl-7.59.0/Makefile
+curl-7.65.3-clean:
+	[ ! -f curl-7.65.3/Makefile ] || $(MAKE) -C curl-7.65.3 clean
+	@rm -f curl-7.65.3/Makefile
 
-curl-7.59.0-stage:
-	install -D curl-7.59.0/src/curl $(STAGEDIR)/usr/sbin/curl
+curl-7.65.3-stage:
+	install -D curl-7.65.3/src/curl $(STAGEDIR)/usr/sbin/curl
 	$(STRIP) $(STAGEDIR)/usr/sbin/curl
-#	@$(MAKE) -C curl-7.59.0 install DESTDIR=$(STAGEDIR)
+#	@$(MAKE) -C curl-7.65.3 install DESTDIR=$(STAGEDIR)
 
 #snmp
 net-snmp-5.7.2/stamp-h1:
