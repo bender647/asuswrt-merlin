@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -178,7 +178,7 @@ status_flush(struct status_output *so)
             const off_t off = lseek(so->fd, (off_t)0, SEEK_CUR);
             if (ftruncate(so->fd, off) != 0)
             {
-                msg(M_WARN, "Failed to truncate status file: %s", strerror(errno));
+                msg(M_WARN | M_ERRNO, "Failed to truncate status file");
             }
         }
 #elif defined(HAVE_CHSIZE)
@@ -330,114 +330,3 @@ status_read(struct status_output *so, struct buffer *buf)
 
     return ret;
 }
-
-//Sam.B,	2013/10.31
-void update_nvram_status(int flag)
-{
-	int pid = getpid();
-	char buf[32] = {0};
-	char name[16] = {0};
-	char *p = NULL;
-
-	psname(pid, name, 16);	//vpnserverX or vpnclientX
-	p = name + 3;
-
-	switch(flag) {
-	case EXIT_GOOD:
-		sprintf(buf, "vpn_%s_errno", p);
-		if(nvram_get_int(buf)) {
-			sprintf(buf, "vpn_%s_state", p);
-			nvram_set_int(buf, ST_ERROR);
-		}
-		else {
-			sprintf(buf, "vpn_%s_state", p);
-			nvram_set_int(buf, ST_EXIT);
-		}
-		break;
-	case EXIT_ERROR:
-		sprintf(buf, "vpn_%s_state", p);
-		nvram_set_int(buf, ST_ERROR);
-		break;
-	case ADDR_CONFLICTED:
-		sprintf(buf, "vpn_%s_errno", p);
-		nvram_set_int(buf, nvram_get_int(buf) | ERRNO_IP);
-		break;
-	case ROUTE_CONFLICTED:
-		sprintf(buf, "vpn_%s_errno", p);
-		nvram_set_int(buf, nvram_get_int(buf) | ERRNO_ROUTE);
-		break;
-	case RUNNING:
-		sprintf(buf, "vpn_%s_errno", p);
-		nvram_set_int(buf, 0);
-		sprintf(buf, "vpn_%s_state", p);
-		nvram_set_int(buf, ST_RUNNING);
-		break;
-	case SSLPARAM_ERROR:
-		sprintf(buf, "vpn_%s_errno", p);
-		nvram_set_int(buf, ERRNO_SSL);
-		break;
-	case SSLPARAM_DH_ERROR:
-		sprintf(buf, "vpn_%s_errno", p);
-		nvram_set_int(buf, ERRNO_DH);
-		break;
-	case RCV_AUTH_FAILED_ERROR:
-		sprintf(buf, "vpn_%s_errno", p);
-		nvram_set_int(buf, ERRNO_AUTH);
-		break;
-	}
-}
-
-int current_addr(in_addr_t addr)
-{
-	FILE *fp = fopen("/proc/net/route", "r");
-	in_addr_t dest;
-	char buf[256];
-	int i;
-
-	if(fp) {
-		while(fgets(buf, sizeof(buf), fp)) {
-			if(!strncmp(buf, "Iface", 5))
-				continue;
-
-			i = sscanf(buf, "%*s %x", &dest);
-			if (i != 1)
-				break;
-
-			if(dest == addr) {
-				fclose(fp);
-				return 1;
-			}
-		}
-		fclose(fp);
-	}
-	return 0;
-}
-
-int current_route(in_addr_t network, in_addr_t netmask)
-{
-	FILE *fp = fopen("/proc/net/route", "r");
-	in_addr_t dest, mask;
-	char buf[256];
-	int i;
-
-	if(fp) {
-		while(fgets(buf, sizeof(buf), fp)) {
-			if(!strncmp(buf, "Iface", 5))
-				continue;
-
-			i = sscanf(buf, "%*s %x %*s %*s %*s %*s %*s %x",
-					&dest, &mask);
-			if (i != 2)
-				break;
-
-			if(dest == network && mask == netmask) {
-				fclose(fp);
-				return 1;
-			}
-		}
-		fclose(fp);
-	}
-	return 0;
-}
-
-//Sam.E	2013/10/31

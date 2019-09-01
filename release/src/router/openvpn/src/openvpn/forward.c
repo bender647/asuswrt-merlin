@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -496,7 +496,7 @@ encrypt_sign(struct context *c, bool comp_frag)
         /* If using P_DATA_V2, prepend the 1-byte opcode and 3-byte peer-id to the
          * packet before openvpn_encrypt(), so we can authenticate the opcode too.
          */
-        if (c->c2.buf.len > 0 && !c->c2.tls_multi->opt.server && c->c2.tls_multi->use_peer_id)
+        if (c->c2.buf.len > 0 && c->c2.tls_multi->use_peer_id)
         {
             tls_prepend_opcode_v2(c->c2.tls_multi, &b->encrypt_buf);
         }
@@ -512,7 +512,7 @@ encrypt_sign(struct context *c, bool comp_frag)
     /* Do packet administration */
     if (c->c2.tls_multi)
     {
-        if (c->c2.buf.len > 0 && (c->c2.tls_multi->opt.server || !c->c2.tls_multi->use_peer_id))
+        if (c->c2.buf.len > 0 && !c->c2.tls_multi->use_peer_id)
         {
             tls_prepend_opcode_v1(c->c2.tls_multi, &c->c2.buf);
         }
@@ -756,7 +756,7 @@ read_incoming_link(struct context *c)
                 if (event_timeout_defined(&c->c2.explicit_exit_notification_interval))
                 {
                     msg(D_STREAM_ERRORS, "Connection reset during exit notification period, ignoring [%d]", status);
-                    openvpn_sleep(1);
+                    management_sleep(1);
                 }
                 else
 #endif
@@ -1007,7 +1007,7 @@ process_incoming_link_part2(struct context *c, struct link_socket_info *lsi, con
     }
 }
 
-void
+static void
 process_incoming_link(struct context *c)
 {
     perf_push(PERF_PROC_IN_LINK);

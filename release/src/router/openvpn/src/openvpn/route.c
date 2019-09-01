@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -41,7 +41,6 @@
 #include "manage.h"
 #include "win32.h"
 #include "options.h"
-#include "status.h"
 
 #include "memdbg.h"
 
@@ -519,14 +518,14 @@ add_route_ipv6_to_option_list(struct route_ipv6_option_list *l,
     l->routes_ipv6 = ro;
 }
 
-void
+static void
 clear_route_list(struct route_list *rl)
 {
     gc_free(&rl->gc);
     CLEAR(*rl);
 }
 
-void
+static void
 clear_route_ipv6_list(struct route_ipv6_list *rl6)
 {
     gc_free(&rl6->gc);
@@ -1531,7 +1530,9 @@ add_route(struct route_ipv4 *r,
     struct gc_arena gc;
     struct argv argv = argv_new();
     const char *network;
+#if !defined(ENABLE_IPROUTE) && !defined(TARGET_AIX)
     const char *netmask;
+#endif
     const char *gateway;
     bool status = false;
     int is_local_route;
@@ -1544,7 +1545,9 @@ add_route(struct route_ipv4 *r,
     gc_init(&gc);
 
     network = print_in_addr_t(r->network, 0, &gc);
+#if !defined(ENABLE_IPROUTE) && !defined(TARGET_AIX)
     netmask = print_in_addr_t(r->netmask, 0, &gc);
+#endif
     gateway = print_in_addr_t(r->gateway, 0, &gc);
 
     is_local_route = local_route(r->network, r->netmask, r->gateway, rgi);
@@ -1552,14 +1555,6 @@ add_route(struct route_ipv4 *r,
     {
         goto done;
     }
-
-    //Sam.B      2013/10/31
-    if(current_route(htonl(r->network), htonl(r->netmask))) {
-        msg(M_WARN, "Ignore conflicted routing rule: %s %s", network, netmask);
-        update_nvram_status(ROUTE_CONFLICTED);
-        goto done;
-    }
-    //Sam.E      2013/10/31
 
 #if defined(TARGET_LINUX)
 #ifdef ENABLE_IPROUTE
@@ -1825,7 +1820,7 @@ done:
 }
 
 
-static void
+void
 route_ipv6_clear_host_bits( struct route_ipv6 *r6 )
 {
     /* clear host bit parts of route
@@ -1974,12 +1969,12 @@ add_route_ipv6(struct route_ipv6 *r6, const struct tuntap *tt, unsigned int flag
         struct buffer out = alloc_buf_gc(64, &gc);
         if (r6->adapter_index)          /* vpn server special route */
         {
-            buf_printf(&out, "interface=%d", r6->adapter_index );
+            buf_printf(&out, "interface=%lu", r6->adapter_index );
             gateway_needed = true;
         }
         else
         {
-            buf_printf(&out, "interface=%d", tt->adapter_index );
+            buf_printf(&out, "interface=%lu", tt->adapter_index );
         }
         device = buf_bptr(&out);
 
@@ -2141,8 +2136,12 @@ delete_route(struct route_ipv4 *r,
     struct gc_arena gc;
     struct argv argv = argv_new();
     const char *network;
+#if !defined(ENABLE_IPROUTE) && !defined(TARGET_AIX)
     const char *netmask;
+#endif
+#if !defined(TARGET_LINUX) && !defined(TARGET_ANDROID)
     const char *gateway;
+#endif
     int is_local_route;
 
     if ((r->flags & (RT_DEFINED|RT_ADDED)) != (RT_DEFINED|RT_ADDED))
@@ -2153,8 +2152,12 @@ delete_route(struct route_ipv4 *r,
     gc_init(&gc);
 
     network = print_in_addr_t(r->network, 0, &gc);
+#if !defined(ENABLE_IPROUTE) && !defined(TARGET_AIX)
     netmask = print_in_addr_t(r->netmask, 0, &gc);
+#endif
+#if !defined(TARGET_LINUX) && !defined(TARGET_ANDROID)
     gateway = print_in_addr_t(r->gateway, 0, &gc);
+#endif
 
     is_local_route = local_route(r->network, r->netmask, r->gateway, rgi);
     if (is_local_route == LR_ERROR)
@@ -2413,12 +2416,12 @@ delete_route_ipv6(const struct route_ipv6 *r6, const struct tuntap *tt, unsigned
         struct buffer out = alloc_buf_gc(64, &gc);
         if (r6->adapter_index)          /* vpn server special route */
         {
-            buf_printf(&out, "interface=%d", r6->adapter_index );
+            buf_printf(&out, "interface=%lu", r6->adapter_index );
             gateway_needed = true;
         }
         else
         {
-            buf_printf(&out, "interface=%d", tt->adapter_index );
+            buf_printf(&out, "interface=%lu", tt->adapter_index );
         }
         device = buf_bptr(&out);
 
@@ -2777,7 +2780,6 @@ windows_route_find_if_index(const struct route_ipv4 *r, const struct tuntap *tt)
         msg(M_WARN, "Warning: route gateway is ambiguous: %s (%d matches)",
             print_in_addr_t(r->gateway, 0, &gc),
             count);
-        ret = TUN_ADAPTER_INDEX_INVALID;
     }
 
     dmsg(D_ROUTE_DEBUG, "DEBUG: route find if: on_tun=%d count=%d index=%d",
@@ -2839,7 +2841,7 @@ get_default_gateway_ipv6(struct route_ipv6_gateway_info *rgi6,
         goto done;
     }
 
-    msg( D_ROUTE, "GDG6: II=%d DP=%s/%d NH=%s",
+    msg( D_ROUTE, "GDG6: II=%lu DP=%s/%d NH=%s",
          BestRoute.InterfaceIndex,
          print_in6_addr( BestRoute.DestinationPrefix.Prefix.Ipv6.sin6_addr, 0, &gc),
          BestRoute.DestinationPrefix.PrefixLength,
@@ -3000,7 +3002,7 @@ do_route_service(const bool add, const route_message_t *rt, const size_t size, H
 
     if (ack.error_number != NO_ERROR)
     {
-        msg(M_WARN, "ROUTE: route %s failed using service: %s [status=%u if_index=%lu]",
+        msg(M_WARN, "ROUTE: route %s failed using service: %s [status=%u if_index=%d]",
             (add ? "addition" : "deletion"), strerror_win32(ack.error_number, &gc),
             ack.error_number, rt->iface.index);
         goto out;
@@ -3450,7 +3452,14 @@ get_default_gateway_ipv6(struct route_ipv6_gateway_info *rgi6,
         if (nh->nlmsg_type == NLMSG_ERROR)
         {
             struct nlmsgerr *ne = (struct nlmsgerr *)NLMSG_DATA(nh);
-            msg(M_WARN, "GDG6: NLSMG_ERROR: error %d\n", ne->error);
+
+            /* since linux-4.11 -ENETUNREACH is returned when no route can be
+             * found. Don't print any error message in this case */
+            if (ne->error != -ENETUNREACH)
+            {
+                msg(M_WARN, "GDG6: NLMSG_ERROR: error %s\n",
+                    strerror(-ne->error));
+            }
             break;
         }
 

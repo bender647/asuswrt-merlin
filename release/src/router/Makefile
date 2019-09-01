@@ -3593,8 +3593,8 @@ openvpn-install:
 	chmod 0500 $(INSTALLDIR)/openvpn/usr/sbin/openvpn
 	install -D openvpn/src/plugins/auth-pam/.libs/openvpn-plugin-auth-pam.so $(INSTALLDIR)/openvpn/usr/lib/openvpn-plugin-auth-pam.so
 	$(STRIP) -s $(INSTALLDIR)/openvpn/usr/lib/openvpn-plugin-auth-pam.so
-	@mkdir -p $(TARGETDIR)/rom/easy-rsa
-	install openvpn/easy-rsa/2.0/* $(TARGETDIR)/rom/easy-rsa
+	#@mkdir -p $(TARGETDIR)/rom/easy-rsa
+	#install openvpn/easy-rsa/2.0/* $(TARGETDIR)/rom/easy-rsa
 
 sdparm-1.02: sdparm-1.02/Makefile
 	$(MAKE) -C $@

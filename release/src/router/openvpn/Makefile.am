@@ -5,7 +5,7 @@
 #             packet encryption, packet authentication, and
 #             packet compression.
 #
-#  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+#  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
 #  Copyright (C) 2010      David Sommerseth <dazo@users.sourceforge.net>
 #  Copyright (C) 2006-2012 Alon Bar-Lev <alon.barlev@gmail.com>
 #
@@ -58,7 +58,7 @@ SUBDIRS = build distro include src sample doc vendor tests
 dist_doc_DATA = \
 	README \
 	README.IPv6 \
-	README.polarssl \
+	README.mbedtls \
 	Changes.rst \
 	COPYRIGHT.GPL \
 	COPYING
@@ -68,7 +68,7 @@ dist_noinst_DATA = \
 	.gitattributes \
 	PORTS \
 	README.IPv6 TODO.IPv6 \
-	README.polarssl \
+	README.mbedtls \
 	openvpn.sln \
 	msvc-env.bat \
 	msvc-dev.bat \

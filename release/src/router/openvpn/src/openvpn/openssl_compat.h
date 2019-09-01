@@ -5,8 +5,8 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
- *  Copyright (C) 2010-2017 Fox Crypto B.V. <openvpn@fox-it.com>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
+ *  Copyright (C) 2010-2018 Fox Crypto B.V. <openvpn@fox-it.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -88,37 +88,18 @@ EVP_MD_CTX_new(void)
 }
 #endif
 
-#if !defined(HAVE_EVP_CIPHER_CTX_FREE)
-/**
- * Free an existing cipher context
- *
- * @param ctx                 The cipher context
- */
-static inline void
-EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *c)
-{
-	free(c);
-}
-#endif
-
-#if !defined(HAVE_EVP_CIPHER_CTX_NEW)
-/**
- * Allocate a new cipher context object
- *
- * @return                    A zero'ed cipher context object
- */
-static inline EVP_CIPHER_CTX *
-EVP_CIPHER_CTX_new(void)
-{
-    EVP_CIPHER_CTX *ctx = NULL;
-    ALLOC_OBJ_CLEAR(ctx, EVP_CIPHER_CTX);
-    return ctx;
-}
-#endif
-
 #if !defined(HAVE_HMAC_CTX_RESET)
 /**
  * Reset a HMAC context
+ *
+ * OpenSSL 1.1+ removes APIs HMAC_CTX_init() and HMAC_CTX_cleanup()
+ * and replace them with a single call that does a cleanup followed
+ * by an init. A proper _reset() for OpenSSL < 1.1 should perform
+ * a similar set of operations.
+ *
+ * It means that before we kill a HMAC context, we'll have to cleanup
+ * again, as we probably have allocated a few resources when we forced
+ * an init.
  *
  * @param ctx                 The HMAC context
  * @return                    1 on success, 0 on error
@@ -127,42 +108,22 @@ static inline int
 HMAC_CTX_reset(HMAC_CTX *ctx)
 {
     HMAC_CTX_cleanup(ctx);
+    HMAC_CTX_init(ctx);
     return 1;
-}
-#endif
-
-#if !defined(HAVE_HMAC_CTX_INIT)
-/**
- * Init a HMAC context
- *
- * @param ctx                 The HMAC context
- *
- * Contrary to many functions in this file, HMAC_CTX_init() is not
- * an OpenSSL 1.1 function: it comes from previous versions and was
- * removed in v1.1. As a consequence, there is no distincting in
- * v1.1 between a cleanup, and init and a reset. Yet, previous OpenSSL
- * version need this distinction.
- *
- * In order to respect previous OpenSSL versions, we implement init
- * as reset for OpenSSL 1.1+.
- */
-static inline void
-HMAC_CTX_init(HMAC_CTX *ctx)
-{
-    HMAC_CTX_reset(ctx);
 }
 #endif
 
 #if !defined(HAVE_HMAC_CTX_FREE)
 /**
- * Free an existing HMAC context
+ * Cleanup and free an existing HMAC context
  *
  * @param ctx                 The HMAC context
  */
 static inline void
-HMAC_CTX_free(HMAC_CTX *c)
+HMAC_CTX_free(HMAC_CTX *ctx)
 {
-	free(c);
+    HMAC_CTX_cleanup(ctx);
+    free(ctx);
 }
 #endif
 
@@ -279,7 +240,21 @@ X509_OBJECT_get_type(const X509_OBJECT *obj)
 static inline RSA *
 EVP_PKEY_get0_RSA(EVP_PKEY *pkey)
 {
-    return pkey ? pkey->pkey.rsa : NULL;
+    return (pkey && pkey->type == EVP_PKEY_RSA) ? pkey->pkey.rsa : NULL;
+}
+#endif
+
+#if !defined(HAVE_EVP_PKEY_GET0_EC_KEY) && !defined(OPENSSL_NO_EC)
+/**
+ * Get the EC_KEY object of a public key
+ *
+ * @param pkey                Public key object
+ * @return                    The underlying EC_KEY object
+ */
+static inline EC_KEY *
+EVP_PKEY_get0_EC_KEY(EVP_PKEY *pkey)
+{
+    return (pkey && pkey->type == EVP_PKEY_EC) ? pkey->pkey.ec : NULL;
 }
 #endif
 
@@ -307,7 +282,7 @@ EVP_PKEY_id(const EVP_PKEY *pkey)
 static inline DSA *
 EVP_PKEY_get0_DSA(EVP_PKEY *pkey)
 {
-    return pkey ? pkey->pkey.dsa : NULL;
+    return (pkey && pkey->type == EVP_PKEY_DSA) ? pkey->pkey.dsa : NULL;
 }
 #endif
 
@@ -649,9 +624,153 @@ RSA_meth_set0_app_data(RSA_METHOD *meth, void *app_data)
 }
 #endif
 
+#if !defined(HAVE_RSA_METH_GET0_APP_DATA)
+/**
+ * Get the application data of an RSA_METHOD object
+ *
+ * @param meth               The RSA_METHOD object
+ * @return                   pointer to application data, may be NULL
+ */
+static inline void *
+RSA_meth_get0_app_data(const RSA_METHOD *meth)
+{
+    return meth ? meth->app_data : NULL;
+}
+#endif
+
+#if !defined(HAVE_EC_GROUP_ORDER_BITS) && !defined(OPENSSL_NO_EC)
+/**
+ * Gets the number of bits of the order of an EC_GROUP
+ *
+ *  @param  group               EC_GROUP object
+ *  @return                     number of bits of group order.
+ */
+static inline int
+EC_GROUP_order_bits(const EC_GROUP *group)
+{
+    BIGNUM* order = BN_new();
+    EC_GROUP_get_order(group, order, NULL);
+    int bits = BN_num_bits(order);
+    BN_free(order);
+    return bits;
+}
+#endif
+
 /* SSLeay symbols have been renamed in OpenSSL 1.1 */
 #if !defined(RSA_F_RSA_OSSL_PRIVATE_ENCRYPT)
 #define RSA_F_RSA_OSSL_PRIVATE_ENCRYPT       RSA_F_RSA_EAY_PRIVATE_ENCRYPT
 #endif
+
+#ifndef SSL_CTX_get_min_proto_version
+/** Return the min SSL protocol version currently enabled in the context.
+ *  If no valid version >= TLS1.0 is found, return 0. */
+static inline int
+SSL_CTX_get_min_proto_version(SSL_CTX *ctx)
+{
+    long sslopt = SSL_CTX_get_options(ctx);
+    if (!(sslopt & SSL_OP_NO_TLSv1))
+    {
+        return TLS1_VERSION;
+    }
+#ifdef SSL_OP_NO_TLSv1_1
+    if (!(sslopt & SSL_OP_NO_TLSv1_1))
+    {
+        return TLS1_1_VERSION;
+    }
+#endif
+#ifdef SSL_OP_NO_TLSv1_2
+    if (!(sslopt & SSL_OP_NO_TLSv1_2))
+    {
+        return TLS1_2_VERSION;
+    }
+#endif
+    return 0;
+}
+#endif /* SSL_CTX_get_min_proto_version */
+
+#ifndef SSL_CTX_get_max_proto_version
+/** Return the max SSL protocol version currently enabled in the context.
+ *  If no valid version >= TLS1.0 is found, return 0. */
+static inline int
+SSL_CTX_get_max_proto_version(SSL_CTX *ctx)
+{
+    long sslopt = SSL_CTX_get_options(ctx);
+#ifdef SSL_OP_NO_TLSv1_2
+    if (!(sslopt & SSL_OP_NO_TLSv1_2))
+    {
+        return TLS1_2_VERSION;
+    }
+#endif
+#ifdef SSL_OP_NO_TLSv1_1
+    if (!(sslopt & SSL_OP_NO_TLSv1_1))
+    {
+        return TLS1_1_VERSION;
+    }
+#endif
+    if (!(sslopt & SSL_OP_NO_TLSv1))
+    {
+        return TLS1_VERSION;
+    }
+    return 0;
+}
+#endif /* SSL_CTX_get_max_proto_version */
+
+#ifndef SSL_CTX_set_min_proto_version
+/** Mimics SSL_CTX_set_min_proto_version for OpenSSL < 1.1 */
+static inline int
+SSL_CTX_set_min_proto_version(SSL_CTX *ctx, long tls_ver_min)
+{
+    long sslopt = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3; /* Never do < TLS 1.0 */
+
+    if (tls_ver_min > TLS1_VERSION)
+    {
+        sslopt |= SSL_OP_NO_TLSv1;
+    }
+#ifdef SSL_OP_NO_TLSv1_1
+    if (tls_ver_min > TLS1_1_VERSION)
+    {
+        sslopt |= SSL_OP_NO_TLSv1_1;
+    }
+#endif
+#ifdef SSL_OP_NO_TLSv1_2
+    if (tls_ver_min > TLS1_2_VERSION)
+    {
+        sslopt |= SSL_OP_NO_TLSv1_2;
+    }
+#endif
+    SSL_CTX_set_options(ctx, sslopt);
+
+    return 1;
+}
+#endif /* SSL_CTX_set_min_proto_version */
+
+#ifndef SSL_CTX_set_max_proto_version
+/** Mimics SSL_CTX_set_max_proto_version for OpenSSL < 1.1 */
+static inline int
+SSL_CTX_set_max_proto_version(SSL_CTX *ctx, long tls_ver_max)
+{
+    long sslopt = 0;
+
+    if (tls_ver_max < TLS1_VERSION)
+    {
+        sslopt |= SSL_OP_NO_TLSv1;
+    }
+#ifdef SSL_OP_NO_TLSv1_1
+    if (tls_ver_max < TLS1_1_VERSION)
+    {
+        sslopt |= SSL_OP_NO_TLSv1_1;
+    }
+#endif
+#ifdef SSL_OP_NO_TLSv1_2
+    if (tls_ver_max < TLS1_2_VERSION)
+    {
+        sslopt |= SSL_OP_NO_TLSv1_2;
+    }
+#endif
+    SSL_CTX_set_options(ctx, sslopt);
+
+    return 1;
+}
+#endif /* SSL_CTX_set_max_proto_version */
 
 #endif /* OPENSSL_COMPAT_H_ */

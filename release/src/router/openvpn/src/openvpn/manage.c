@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -68,7 +68,7 @@ static void man_output_standalone(struct management *man, volatile int *signal_r
 static void man_reset_client_socket(struct management *man, const bool exiting);
 
 static void
-man_help()
+man_help(void)
 {
     msg(M_CLIENT, "Management Interface for %s", title_string);
     msg(M_CLIENT, "Commands:");
@@ -250,7 +250,7 @@ man_output_list_push_str(struct management *man, const char *str)
 {
     if (management_connected(man) && str)
     {
-        buffer_list_push(man->connection.out, (const unsigned char *) str);
+        buffer_list_push(man->connection.out, str);
     }
 }
 
@@ -1878,17 +1878,15 @@ man_connect(struct management *man)
 #if UNIX_SOCK_SUPPORT
         if (man->settings.flags & MF_UNIX_SOCK)
         {
-            msg(D_LINK_ERRORS,
-                "MANAGEMENT: connect to unix socket %s failed: %s",
-                sockaddr_unix_name(&man->settings.local_unix, "NULL"),
-                strerror_ts(status, &gc));
+            msg(D_LINK_ERRORS | M_ERRNO,
+                "MANAGEMENT: connect to unix socket %s failed",
+                sockaddr_unix_name(&man->settings.local_unix, "NULL"));
         }
         else
 #endif
-        msg(D_LINK_ERRORS,
-            "MANAGEMENT: connect to %s failed: %s",
-            print_sockaddr(man->settings.local->ai_addr, &gc),
-            strerror_ts(status, &gc));
+        msg(D_LINK_ERRORS | M_ERRNO,
+            "MANAGEMENT: connect to %s failed",
+            print_sockaddr(man->settings.local->ai_addr, &gc));
         throw_signal_soft(SIGTERM, "management-connect-failed");
         goto done;
     }
@@ -2008,9 +2006,8 @@ man_io_error(struct management *man, const char *prefix)
     if (!ignore_sys_error(err))
     {
         struct gc_arena gc = gc_new();
-        msg(D_MANAGEMENT, "MANAGEMENT: TCP %s error: %s",
-            prefix,
-            strerror_ts(err, &gc));
+        msg(D_MANAGEMENT, "MANAGEMENT: TCP %s error: %s", prefix,
+            strerror(err));
         gc_free(&gc);
         return true;
     }
@@ -2196,13 +2193,13 @@ man_read(struct management *man)
          * process command line if complete
          */
         {
-            const unsigned char *line;
+            const char *line;
             while ((line = command_line_get(man->connection.in)))
             {
 #ifdef MANAGEMENT_IN_EXTRA
                 if (man->connection.in_extra)
                 {
-                    if (!strcmp((char *)line, "END"))
+                    if (!strcmp(line, "END"))
                     {
                         in_extra_dispatch(man);
                     }
@@ -3518,7 +3515,7 @@ management_query_user_pass(struct management *man,
 
 #ifdef MANAGMENT_EXTERNAL_KEY
 
-int
+static int
 management_query_multiline(struct management *man,
                            const char *b64_data, const char *prompt, const char *cmd, int *state, struct buffer_list **input)
 {
@@ -3594,7 +3591,7 @@ done:
     return ret;
 }
 
-char *
+static char *
 /* returns allocated base64 signature */
 management_query_multiline_flatten_newline(struct management *man,
                                            const char *b64_data, const char *prompt, const char *cmd, int *state, struct buffer_list **input)
@@ -3623,7 +3620,7 @@ management_query_multiline_flatten_newline(struct management *man,
     return result;
 }
 
-char *
+static char *
 /* returns allocated base64 signature */
 management_query_multiline_flatten(struct management *man,
                                    const char *b64_data, const char *prompt, const char *cmd, int *state, struct buffer_list **input)
@@ -3797,18 +3794,18 @@ command_line_add(struct command_line *cl, const unsigned char *buf, const int le
     }
 }
 
-const unsigned char *
+const char *
 command_line_get(struct command_line *cl)
 {
     int i;
-    const unsigned char *ret = NULL;
+    const char *ret = NULL;
 
     i = buf_substring_len(&cl->buf, '\n');
     if (i >= 0)
     {
         buf_copy_excess(&cl->residual, &cl->buf, i);
         buf_chomp(&cl->buf);
-        ret = (const unsigned char *) BSTR(&cl->buf);
+        ret = BSTR(&cl->buf);
     }
     return ret;
 }
@@ -4002,9 +3999,25 @@ log_history_ref(const struct log_history *h, const int index)
     }
 }
 
-#else  /* ifdef ENABLE_MANAGEMENT */
-static void
-dummy(void)
+void
+management_sleep(const int n)
 {
+    if (management)
+    {
+        management_event_loop_n_seconds(management, n);
+    }
+    else
+    {
+        sleep(n);
+    }
 }
+
+#else  /* ifdef ENABLE_MANAGEMENT */
+
+void
+management_sleep(const int n)
+{
+    sleep(n);
+}
+
 #endif /* ENABLE_MANAGEMENT */

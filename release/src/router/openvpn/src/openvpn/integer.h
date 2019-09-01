@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -116,6 +116,24 @@ modulo_add(int x, int y, int mod)
         sum += mod;
     }
     return sum;
+}
+
+/*
+ * Return the next largest power of 2
+ * or u if u is a power of 2.
+ */
+static inline size_t
+adjust_power_of_2(size_t u)
+{
+    size_t ret = 1;
+
+    while (ret < u)
+    {
+        ret <<= 1;
+        ASSERT(ret > 0);
+    }
+
+    return ret;
 }
 
 static inline int

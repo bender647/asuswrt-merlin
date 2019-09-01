@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -325,7 +325,7 @@ tunnel_server_udp_single_threaded(struct context *top)
     multi.top.c2.inotify_fd = inotify_init();
     if (multi.top.c2.inotify_fd < 0)
     {
-        msg(D_MULTI_ERRORS, "MULTI: inotify_init error: %s", strerror(errno));
+        msg(D_MULTI_ERRORS | M_ERRNO, "MULTI: inotify_init error");
     }
 #endif
 

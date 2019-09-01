@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -46,7 +46,6 @@
 #include "lladdr.h"
 #include "ping.h"
 #include "mstats.h"
-#include "status.h"
 #include "ssl_verify.h"
 #include "tls_crypt.h"
 #include "forward-inline.h"
@@ -92,6 +91,94 @@ context_clear_all_except_first_time(struct context *c)
     context_clear(c);
     c->first_time = first_time_save;
     c->persist = cpsave;
+}
+
+/*
+ * Pass tunnel endpoint and MTU parms to a user-supplied script.
+ * Used to execute the up/down script/plugins.
+ */
+static void
+run_up_down(const char *command,
+            const struct plugin_list *plugins,
+            int plugin_type,
+            const char *arg,
+#ifdef _WIN32
+            DWORD adapter_index,
+#endif
+            const char *dev_type,
+            int tun_mtu,
+            int link_mtu,
+            const char *ifconfig_local,
+            const char *ifconfig_remote,
+            const char *context,
+            const char *signal_text,
+            const char *script_type,
+            struct env_set *es)
+{
+    struct gc_arena gc = gc_new();
+
+    if (signal_text)
+    {
+        setenv_str(es, "signal", signal_text);
+    }
+    setenv_str(es, "script_context", context);
+    setenv_int(es, "tun_mtu", tun_mtu);
+    setenv_int(es, "link_mtu", link_mtu);
+    setenv_str(es, "dev", arg);
+    if (dev_type)
+    {
+        setenv_str(es, "dev_type", dev_type);
+    }
+#ifdef _WIN32
+    setenv_int(es, "dev_idx", adapter_index);
+#endif
+
+    if (!ifconfig_local)
+    {
+        ifconfig_local = "";
+    }
+    if (!ifconfig_remote)
+    {
+        ifconfig_remote = "";
+    }
+    if (!context)
+    {
+        context = "";
+    }
+
+    if (plugin_defined(plugins, plugin_type))
+    {
+        struct argv argv = argv_new();
+        ASSERT(arg);
+        argv_printf(&argv,
+                    "%s %d %d %s %s %s",
+                    arg,
+                    tun_mtu, link_mtu,
+                    ifconfig_local, ifconfig_remote,
+                    context);
+
+        if (plugin_call(plugins, plugin_type, &argv, NULL, es) != OPENVPN_PLUGIN_FUNC_SUCCESS)
+        {
+            msg(M_FATAL, "ERROR: up/down plugin call failed");
+        }
+
+        argv_reset(&argv);
+    }
+
+    if (command)
+    {
+        struct argv argv = argv_new();
+        ASSERT(arg);
+        setenv_str(es, "script_type", script_type);
+        argv_parse_cmd(&argv, command);
+        argv_printf_cat(&argv, "%s %d %d %s %s %s", arg, tun_mtu, link_mtu,
+                        ifconfig_local, ifconfig_remote, context);
+        argv_msg(M_INFO, &argv);
+        openvpn_run_script(&argv, es, S_FATAL, "--up/--down");
+        argv_reset(&argv);
+    }
+
+    gc_free(&gc);
 }
 
 /*
@@ -151,7 +238,7 @@ management_callback_proxy_cmd(void *arg, const char **p)
         else if (streq(p[1], "SOCKS"))
         {
             ce->socks_proxy_server = string_alloc(p[2], gc);
-            ce->socks_proxy_port = p[3];
+            ce->socks_proxy_port = string_alloc(p[3], gc);
             ret = true;
         }
     }
@@ -611,6 +698,7 @@ init_port_share(struct context *c)
 
 #endif /* if PORT_SHARE */
 
+
 bool
 init_static(void)
 {
@@ -620,8 +708,20 @@ init_static(void)
     crypto_init_dmalloc();
 #endif
 
-    init_random_seed();         /* init random() function, only used as
-                                 * source for weak random numbers */
+
+    /*
+     * Initialize random number seed.  random() is only used
+     * when "weak" random numbers are acceptable.
+     * SSL library routines are always used when cryptographically
+     * strong random numbers are required.
+     */
+    struct timeval tv;
+    if (!gettimeofday(&tv, NULL))
+    {
+        const unsigned int seed = (unsigned int) tv.tv_sec ^ tv.tv_usec;
+        srandom(seed);
+    }
+
     error_reset();              /* initialize error.c */
     reset_check_status();       /* initialize status check code in socket.c */
 
@@ -916,7 +1016,8 @@ print_openssl_info(const struct options *options)
         }
         if (options->show_tls_ciphers)
         {
-            show_available_tls_ciphers(options->cipher_list);
+            show_available_tls_ciphers(options->cipher_list,
+                                       options->tls_cert_profile);
         }
         if (options->show_curves)
         {
@@ -1420,8 +1521,6 @@ initialization_sequence_completed(struct context *c, const unsigned int flags)
         msg(M_INFO, "%s", message);
     }
 
-    update_nvram_status(RUNNING);        //Sam, 2013/10/31
-
     /* Flag that we initialized */
     if ((flags & (ISC_ERRORS|ISC_SERVER)) == 0)
     {
@@ -1907,7 +2006,7 @@ do_close_tun(struct context *c, bool force)
 }
 
 void
-tun_abort()
+tun_abort(void)
 {
     struct context *c = static_context;
     if (c)
@@ -1972,7 +2071,7 @@ do_up(struct context *c, bool pulled_options, unsigned int option_types_found)
                 /* if so, close tun, delete routes, then reinitialize tun and add routes */
                 msg(M_INFO, "NOTE: Pulled options changed on restart, will need to close and reopen TUN/TAP device.");
                 do_close_tun(c, true);
-                openvpn_sleep(1);
+                management_sleep(1);
                 c->c2.did_open_tun = do_open_tun(c);
                 update_time();
             }
@@ -2266,7 +2365,7 @@ socket_restart_pause(struct context *c)
     if (sec)
     {
         msg(D_RESTART, "Restart pause, %d second(s)", sec);
-        openvpn_sleep(sec);
+        management_sleep(sec);
     }
 }
 
@@ -3335,6 +3434,12 @@ do_close_tls(struct context *c)
     }
     c->c2.options_string_local = c->c2.options_string_remote = NULL;
 #endif
+
+    if (c->c2.pulled_options_state)
+    {
+        md_ctx_cleanup(c->c2.pulled_options_state);
+        md_ctx_free(c->c2.pulled_options_state);
+    }
 #endif
 }
 

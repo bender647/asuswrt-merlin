@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2016-2017 Fox Crypto B.V. <openvpn@fox-it.com>
+ *  Copyright (C) 2016-2018 Fox Crypto B.V. <openvpn@fox-it.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -39,7 +39,7 @@
 #include <setjmp.h>
 #include <cmocka.h>
 
-#include "tls_crypt.h"
+#include "tls_crypt.c"
 
 #include "mock_msg.h"
 
@@ -60,23 +60,13 @@ setup(void **state) {
     struct test_context *ctx = calloc(1, sizeof(*ctx));
     *state = ctx;
 
-    ctx->kt.cipher = cipher_kt_get("AES-256-CTR");
-    ctx->kt.digest = md_kt_get("SHA256");
-    if (!ctx->kt.cipher)
-    {
-        printf("No AES-256-CTR support, skipping test.\n");
-        return 0;
-    }
-    if (!ctx->kt.digest)
-    {
-        printf("No HMAC-SHA256 support, skipping test.\n");
-        return 0;
-    }
-    ctx->kt.cipher_length = cipher_kt_key_size(ctx->kt.cipher);
-    ctx->kt.hmac_length = md_kt_size(ctx->kt.digest);
-
     struct key key = { 0 };
 
+    ctx->kt = tls_crypt_kt();
+    if (!ctx->kt.cipher || !ctx->kt.digest)
+    {
+        return 0;
+    }
     init_key_ctx(&ctx->co.key_ctx_bi.encrypt, &key, &ctx->kt, true, "TEST");
     init_key_ctx(&ctx->co.key_ctx_bi.decrypt, &key, &ctx->kt, false, "TEST");
 

@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -299,7 +299,7 @@ packet_id_persist_save_obj(struct packet_id_persist *p, const struct packet_id *
 const char *packet_id_net_print(const struct packet_id_net *pin, bool print_timestamp, struct gc_arena *gc);
 
 #ifdef PID_TEST
-void packet_id_interactive_test();
+void packet_id_interactive_test(void);
 
 #endif
 

@@ -5,8 +5,8 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
- *  Copyright (C) 2010-2017 Fox Crypto B.V. <openvpn@fox-it.com>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
+ *  Copyright (C) 2010-2018 Fox Crypto B.V. <openvpn@fox-it.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -280,7 +280,7 @@ print_cipher(const EVP_CIPHER *cipher)
 }
 
 void
-show_available_ciphers()
+show_available_ciphers(void)
 {
     int nid;
     size_t i;
@@ -339,7 +339,7 @@ show_available_ciphers()
 }
 
 void
-show_available_digests()
+show_available_digests(void)
 {
     int nid;
 
@@ -364,7 +364,7 @@ show_available_digests()
 }
 
 void
-show_available_engines()
+show_available_engines(void)
 {
 #if HAVE_OPENSSL_ENGINE /* Only defined for OpenSSL */
     ENGINE *e;
@@ -665,7 +665,7 @@ cipher_ctx_free(EVP_CIPHER_CTX *ctx)
 }
 
 void
-cipher_ctx_init(EVP_CIPHER_CTX *ctx, uint8_t *key, int key_len,
+cipher_ctx_init(EVP_CIPHER_CTX *ctx, const uint8_t *key, int key_len,
                 const EVP_CIPHER *kt, int enc)
 {
     ASSERT(NULL != kt && NULL != ctx);
@@ -930,7 +930,7 @@ hmac_ctx_init(HMAC_CTX *ctx, const uint8_t *key, int key_len,
 {
     ASSERT(NULL != kt && NULL != ctx);
 
-    HMAC_CTX_init(ctx);
+    HMAC_CTX_reset(ctx);
     HMAC_Init_ex(ctx, key, key_len, kt, NULL);
 
     /* make sure we used a big enough key */

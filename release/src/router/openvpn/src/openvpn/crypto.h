@@ -5,8 +5,8 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
- *  Copyright (C) 2010-2017 Fox Crypto B.V. <openvpn@fox-it.com>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
+ *  Copyright (C) 2010-2018 Fox Crypto B.V. <openvpn@fox-it.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -317,11 +317,15 @@ void init_key_type(struct key_type *kt, const char *ciphername,
  * Key context functions
  */
 
-void init_key_ctx(struct key_ctx *ctx, struct key *key,
+void init_key_ctx(struct key_ctx *ctx, const struct key *key,
                   const struct key_type *kt, int enc,
                   const char *prefix);
 
 void free_key_ctx(struct key_ctx *ctx);
+
+void init_key_ctx_bi(struct key_ctx_bi *ctx, const struct key2 *key2,
+                     int key_direction, const struct key_type *kt,
+		     const char *name);
 
 void free_key_ctx_bi(struct key_ctx_bi *ctx);
 
@@ -459,7 +463,7 @@ void prng_init(const char *md_name, const int nonce_secret_len_parm);
  */
 void prng_bytes(uint8_t *output, int len);
 
-void prng_uninit();
+void prng_uninit(void);
 
 void test_crypto(struct crypto_options *co, struct frame *f);
 
@@ -474,7 +478,7 @@ void must_have_n_keys(const char *filename, const char *option, const struct key
 
 int ascii2keydirection(int msglevel, const char *str);
 
-const char *keydirection2ascii(int kd, bool remote);
+const char *keydirection2ascii(int kd, bool remote, bool humanreadable);
 
 /* print keys */
 void key2_print(const struct key2 *k,

@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -1235,7 +1235,7 @@ set_win_sys_path_via_env(struct env_set *es)
 
 
 const char *
-win_get_tempdir()
+win_get_tempdir(void)
 {
     static char tmpdir[MAX_PATH];
     WCHAR wtmpdir[MAX_PATH];
@@ -1344,17 +1344,16 @@ win_wfp_block_dns(const NET_IFINDEX index, const HANDLE msg_channel)
                                    block_dns_msg_handler);
     if (status == 0)
     {
-        tap_metric_v4 = get_interface_metric(index, AF_INET);
-        tap_metric_v6 = get_interface_metric(index, AF_INET6);
-        if (tap_metric_v4 < 0)
+        int is_auto = 0;
+        tap_metric_v4 = get_interface_metric(index, AF_INET, &is_auto);
+        if (is_auto)
         {
-            /* error, should not restore metric */
-            tap_metric_v4 = -1;
+            tap_metric_v4 = 0;
         }
-        if (tap_metric_v6 < 0)
+        tap_metric_v6 = get_interface_metric(index, AF_INET6, &is_auto);
+        if (is_auto)
         {
-            /* error, should not restore metric */
-            tap_metric_v6 = -1;
+            tap_metric_v6 = 0;
         }
         status = set_interface_metric(index, AF_INET, BLOCK_DNS_IFACE_METRIC);
         if (!status)
@@ -1398,7 +1397,7 @@ win_wfp_uninit(const NET_IFINDEX index, const HANDLE msg_channel)
 }
 
 int
-win32_version_info()
+win32_version_info(void)
 {
     if (!IsWindowsXPOrGreater())
     {
@@ -1426,7 +1425,7 @@ win32_version_info()
 }
 
 bool
-win32_is_64bit()
+win32_is_64bit(void)
 {
 #if defined(_WIN64)
     return true;  /* 64-bit programs run only on Win64 */

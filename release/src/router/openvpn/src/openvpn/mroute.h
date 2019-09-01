@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -141,7 +141,8 @@ bool mroute_extract_openvpn_sockaddr(struct mroute_addr *addr,
                                      const struct openvpn_sockaddr *osaddr,
                                      bool use_port);
 
-bool mroute_learnable_address(const struct mroute_addr *addr);
+bool mroute_learnable_address(const struct mroute_addr *addr,
+                              struct gc_arena *gc);
 
 uint32_t mroute_addr_hash_function(const void *key, uint32_t iv);
 
@@ -181,9 +182,9 @@ mroute_extract_addr_from_packet(struct mroute_addr *src,
                                 const struct buffer *buf,
                                 int tunnel_type)
 {
-    unsigned int mroute_extract_addr_ipv4(struct mroute_addr *src,
-                                          struct mroute_addr *dest,
-                                          const struct buffer *buf);
+    unsigned int mroute_extract_addr_ip(struct mroute_addr *src,
+                                     struct mroute_addr *dest,
+                                     const struct buffer *buf);
 
     unsigned int mroute_extract_addr_ether(struct mroute_addr *src,
                                            struct mroute_addr *dest,
@@ -195,7 +196,7 @@ mroute_extract_addr_from_packet(struct mroute_addr *src,
     verify_align_4(buf);
     if (tunnel_type == DEV_TYPE_TUN)
     {
-        ret = mroute_extract_addr_ipv4(src, dest, buf);
+        ret = mroute_extract_addr_ip(src, dest, buf);
     }
     else if (tunnel_type == DEV_TYPE_TAP)
     {

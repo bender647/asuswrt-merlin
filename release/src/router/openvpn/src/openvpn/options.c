@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *  Copyright (C) 2008-2013 David Sommerseth <dazo@users.sourceforge.net>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -415,8 +415,9 @@ static const char usage_message[] =
     "                  client instance.\n"
     "--ifconfig-pool start-IP end-IP [netmask] : Set aside a pool of subnets\n"
     "                  to be dynamically allocated to connecting clients.\n"
-    "--ifconfig-pool-linear : Use individual addresses rather than /30 subnets\n"
-    "                  in tun mode.  Not compatible with Windows clients.\n"
+    "--ifconfig-pool-linear : (DEPRECATED) Use individual addresses rather \n"
+    "                  than /30 subnets\n in tun mode.  Not compatible with\n"
+    "                  Windows clients.\n"
     "--ifconfig-pool-persist file [seconds] : Persist/unpersist ifconfig-pool\n"
     "                  data to file, at seconds intervals (default=600).\n"
     "                  If seconds=0, file will be treated as read-only.\n"
@@ -434,7 +435,7 @@ static const char usage_message[] =
     "                  Only valid in a client-specific config file.\n"
     "--disable       : Client is disabled.\n"
     "                  Only valid in a client-specific config file.\n"
-    "--client-cert-not-required : Don't require client certificate, client\n"
+    "--client-cert-not-required : (DEPRECATED) Don't require client certificate, client\n"
     "                  will authenticate using username/password.\n"
     "--verify-client-cert [none|optional|require] : perform no, optional or\n"
     "                  mandatory client certificate verification.\n"
@@ -455,7 +456,7 @@ static const char usage_message[] =
     "                  with those of the server will be disconnected.\n"
     "--auth-user-pass-optional : Allow connections by clients that don't\n"
     "                  specify a username/password.\n"
-    "--no-name-remapping : Allow Common Name and X509 Subject to include\n"
+    "--no-name-remapping : (DEPRECATED) Allow Common Name and X509 Subject to include\n"
     "                      any printable character.\n"
     "--client-to-client : Internally route client-to-client traffic.\n"
     "--duplicate-cn  : Allow multiple clients with the same common name to\n"
@@ -539,13 +540,13 @@ static const char usage_message[] =
     "--prng alg [nsl] : For PRNG, use digest algorithm alg, and\n"
     "                   nonce_secret_len=nsl.  Set alg=none to disable PRNG.\n"
 #ifdef HAVE_EVP_CIPHER_CTX_SET_KEY_LENGTH
-    "--keysize n     : Size of cipher key in bits (optional).\n"
+    "--keysize n     : (DEPRECATED) Size of cipher key in bits (optional).\n"
     "                  If unspecified, defaults to cipher-specific default.\n"
 #endif
 #ifndef ENABLE_CRYPTO_MBEDTLS
     "--engine [name] : Enable OpenSSL hardware crypto engine functionality.\n"
 #endif
-    "--no-replay     : Disable replay protection.\n"
+    "--no-replay     : (DEPRECATED) Disable replay protection.\n"
     "--mute-replay-warnings : Silence the output of replay warnings to log file.\n"
     "--replay-window n [t]  : Use a replay protection sliding window of size n\n"
     "                         and a time window of t seconds.\n"
@@ -564,7 +565,7 @@ static const char usage_message[] =
     "(These options are meaningful only for TLS-mode)\n"
     "--tls-server    : Enable TLS and assume server role during TLS handshake.\n"
     "--tls-client    : Enable TLS and assume client role during TLS handshake.\n"
-    "--key-method m  : Data channel key exchange method.  m should be a method\n"
+    "--key-method m  : (DEPRECATED) Data channel key exchange method.  m should be a method\n"
     "                  number, such as 1 (default), 2, etc.\n"
     "--ca file       : Certificate authority file in .pem format containing\n"
     "                  root certificate.\n"
@@ -599,6 +600,8 @@ static const char usage_message[] =
 #endif
     "--tls-cipher l  : A list l of allowable TLS ciphers separated by : (optional).\n"
     "                : Use --show-tls to see a list of supported TLS ciphers.\n"
+    "--tls-cert-profile p : Set the allowed certificate crypto algorithm profile\n"
+    "                  (default=legacy).\n"
     "--tls-timeout n : Packet retransmit timeout on TLS control channel\n"
     "                  if no ACK from remote within n seconds (default=%d).\n"
     "--reneg-bytes n : Renegotiate data chan. key after n bytes sent and recvd.\n"
@@ -704,8 +707,7 @@ static const char usage_message[] =
     "                    which allow multiple addresses,\n"
     "                    --dhcp-option must be repeated.\n"
     "                    DOMAIN name : Set DNS suffix\n"
-    "                    DNS addr    : Set domain name server address(es) (IPv4)\n"
-    "                    DNS6 addr   : Set domain name server address(es) (IPv6)\n"
+    "                    DNS addr    : Set domain name server address(es) (IPv4 and IPv6)\n"
     "                    NTP         : Set NTP server address(es)\n"
     "                    NBDD        : Set NBDD server address(es)\n"
     "                    WINS addr   : Set WINS server address(es)\n"
@@ -873,6 +875,7 @@ init_options(struct options *o, const bool init_gc)
     o->renegotiate_seconds = 3600;
     o->handshake_window = 60;
     o->transition_window = 3600;
+    o->tls_cert_profile = NULL;
     o->ecdh_curve = NULL;
 #ifdef ENABLE_X509ALTUSERNAME
     o->x509_username_field = X509_USERNAME_FIELD_DEFAULT;
@@ -961,7 +964,7 @@ pull_filter_type_name(int type)
 
 #endif
 
-void
+static void
 setenv_connection_entry(struct env_set *es,
                         const struct connection_entry *e,
                         const int i)
@@ -1231,6 +1234,20 @@ show_tuntap_options(const struct tuntap_options *o)
 
 #if defined(_WIN32) || defined(TARGET_ANDROID)
 static void
+dhcp_option_dns6_parse(const char *parm, struct in6_addr *dns6_list, int *len, int msglevel)
+{
+    struct in6_addr addr;
+    if (*len >= N_DHCP_ADDR)
+    {
+        msg(msglevel, "--dhcp-option DNS: maximum of %d IPv6 dns servers can be specified",
+            N_DHCP_ADDR);
+    }
+    else if (get_ipv6_addr(parm, &addr, NULL, msglevel))
+    {
+        dns6_list[(*len)++] = addr;
+    }
+}
+static void
 dhcp_option_address_parse(const char *name, const char *parm, in_addr_t *array, int *len, int msglevel)
 {
     if (*len >= N_DHCP_ADDR)
@@ -1441,7 +1458,7 @@ rol_check_alloc(struct options *options)
     }
 }
 
-void
+static void
 rol6_check_alloc(struct options *options)
 {
     if (!options->routes_ipv6)
@@ -1699,7 +1716,7 @@ show_settings(const struct options *o)
 
 #ifdef ENABLE_CRYPTO
     SHOW_STR(shared_secret_file);
-    SHOW_INT(key_direction);
+    SHOW_PARM(key_direction, keydirection2ascii(o->key_direction, false, true), "%s");
     SHOW_STR(ciphername);
     SHOW_BOOL(ncp_enabled);
     SHOW_STR(ncp_ciphers);
@@ -1752,6 +1769,7 @@ show_settings(const struct options *o)
     SHOW_STR(cryptoapi_cert);
 #endif
     SHOW_STR(cipher_list);
+    SHOW_STR(tls_cert_profile);
     SHOW_STR(tls_verify);
     SHOW_STR(tls_export_cert);
     SHOW_INT(verify_x509_type);
@@ -1872,7 +1890,7 @@ parse_http_proxy_override(const char *server,
     }
 }
 
-void
+static void
 options_postprocess_http_proxy_override(struct options *o)
 {
     const struct connection_list *l = o->connection_list;
@@ -1989,7 +2007,7 @@ alloc_pull_filter(struct options *o, const int msglevel)
     return f;
 }
 
-void
+static void
 connection_entry_load_re(struct connection_entry *ce, const struct remote_entry *re)
 {
     if (re->remote)
@@ -2171,6 +2189,15 @@ options_postprocess_verify_ce(const struct options *options, const struct connec
     {
         msg(M_USAGE, "--management-client-(user|group) can only be used on unix domain sockets");
     }
+
+    if (options->management_addr
+        && !(options->management_flags & MF_UNIX_SOCK)
+        && (!options->management_user_pass))
+    {
+        msg(M_WARN, "WARNING: Using --management on a TCP port WITHOUT "
+            "passwords is STRONGLY discouraged and considered insecure");
+    }
+
 #endif
 
     /*
@@ -2495,6 +2522,16 @@ options_postprocess_verify_ce(const struct options *options, const struct connec
         msg(M_WARN, "WARNING: --no-iv is deprecated and will be removed in 2.5");
     }
 
+    if (options->keysize)
+    {
+        msg(M_WARN, "WARNING: --keysize is DEPRECATED and will be removed in OpenVPN 2.6");
+    }
+
+    if (!options->replay)
+    {
+        msg(M_WARN, "WARNING: --no-replay is DEPRECATED and will be removed in OpenVPN 2.5");
+    }
+
     /*
      * Check consistency of replay options
      */
@@ -2526,6 +2563,18 @@ options_postprocess_verify_ce(const struct options *options, const struct connec
         msg(M_WARN, "WARNING: --key-method 1 is deprecated and will be removed "
             "in OpenVPN 2.5.  By default --key-method 2 will be used if not set "
             "in the configuration file, which is the recommended approach.");
+    }
+
+    const int tls_version_max =
+        (options->ssl_flags >> SSLF_TLS_VERSION_MAX_SHIFT)
+        & SSLF_TLS_VERSION_MAX_MASK;
+    const int tls_version_min =
+        (options->ssl_flags >> SSLF_TLS_VERSION_MIN_SHIFT)
+        & SSLF_TLS_VERSION_MIN_MASK;
+
+    if (tls_version_max > 0 && tls_version_max < tls_version_min)
+    {
+        msg(M_USAGE, "--tls-version-min bigger than --tls-version-max");
     }
 
     if (options->tls_server || options->tls_client)
@@ -2734,6 +2783,7 @@ options_postprocess_verify_ce(const struct options *options, const struct connec
         MUST_BE_UNDEF(pkcs12_file);
 #endif
         MUST_BE_UNDEF(cipher_list);
+        MUST_BE_UNDEF(tls_cert_profile);
         MUST_BE_UNDEF(tls_verify);
         MUST_BE_UNDEF(tls_export_cert);
         MUST_BE_UNDEF(verify_x509_name);
@@ -3016,6 +3066,13 @@ options_postprocess_mutate(struct options *o)
             o->dh_file = NULL;
         }
     }
+    else if (o->dh_file)
+    {
+        /* DH file is only meaningful in a tls-server context. */
+        msg(M_WARN, "WARNING: Ignoring option 'dh' in tls-client mode, please only "
+                    "include this in your server configuration");
+        o->dh_file = NULL;
+    }
 
     /* cipher negotiation (NCP) currently assumes --pull or --mode server */
     if (o->ncp_enabled
@@ -3033,24 +3090,6 @@ options_postprocess_mutate(struct options *o)
         options_postprocess_http_proxy_override(o);
     }
 #endif
-
-#ifdef ENABLE_CRYPTOAPI
-    if (o->cryptoapi_cert)
-    {
-        const int tls_version_max =
-            (o->ssl_flags >> SSLF_TLS_VERSION_MAX_SHIFT)
-            &SSLF_TLS_VERSION_MAX_MASK;
-
-        if (tls_version_max == TLS_VER_UNSPEC || tls_version_max > TLS_VER_1_1)
-        {
-            msg(M_WARN, "Warning: cryptapicert used, setting maximum TLS "
-                "version to 1.1.");
-            o->ssl_flags &= ~(SSLF_TLS_VERSION_MAX_MASK
-                              <<SSLF_TLS_VERSION_MAX_SHIFT);
-            o->ssl_flags |= (TLS_VER_1_1 << SSLF_TLS_VERSION_MAX_SHIFT);
-        }
-    }
-#endif /* ENABLE_CRYPTOAPI */
 
 #if P2MP
     /*
@@ -3148,8 +3187,7 @@ check_file_access(const int type, const char *file, const int mode, const char *
     /* Scream if an error is found */
     if (errcode > 0)
     {
-        msg(M_NOPREFIX|M_OPTERR, "%s fails with '%s': %s",
-            opt, file, strerror(errno));
+        msg(M_NOPREFIX | M_OPTERR | M_ERRNO, "%s fails with '%s'", opt, file);
     }
 
     /* Return true if an error occured */
@@ -3607,7 +3645,7 @@ options_string(const struct options *o,
      * Key direction
      */
     {
-        const char *kd = keydirection2ascii(o->key_direction, remote);
+        const char *kd = keydirection2ascii(o->key_direction, remote, false);
         if (kd)
         {
             buf_printf(&out, ",keydir %s", kd);
@@ -4154,7 +4192,7 @@ usage_version(void)
     show_windows_version( M_INFO|M_NOPREFIX );
 #endif
     msg(M_INFO|M_NOPREFIX, "Originally developed by James Yonan");
-    msg(M_INFO|M_NOPREFIX, "Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>");
+    msg(M_INFO|M_NOPREFIX, "Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>");
 #ifndef ENABLE_SMALL
 #ifdef CONFIGURE_DEFINES
     msg(M_INFO|M_NOPREFIX, "Compile time defines: %s", CONFIGURE_DEFINES);
@@ -4569,7 +4607,7 @@ read_config_file(struct options *options,
                 ++line_num;
                 if (strlen(line) == OPTION_LINE_SIZE)
                 {
-                    msg(msglevel, "In %s:%d: Maximum optione line length (%d) exceeded, line starts with %s",
+                    msg(msglevel, "In %s:%d: Maximum option line length (%d) exceeded, line starts with %s",
                         file, line_num, OPTION_LINE_SIZE, line);
                 }
 
@@ -4828,11 +4866,13 @@ verify_permission(const char *name,
 #ifndef ENABLE_SMALL
     /* Check if this options is allowed in connection block,
      * but we are currently not in a connection block
+     * unless this is a pushed option.
      * Parsing a connection block uses a temporary options struct without
      * connection_list
      */
 
-    if ((type & OPT_P_CONNECTION) && options->connection_list)
+    if ((type & OPT_P_CONNECTION) && options->connection_list
+        && !(allowed & OPT_P_PULL_MODE))
     {
         if (file)
         {
@@ -5235,8 +5275,10 @@ add_option(struct options *options,
     }
     else if (streq(p[0], "tun-ipv6") && !p[1])
     {
-        VERIFY_PERMISSION(OPT_P_UP);
-        msg(M_WARN, "Note: option tun-ipv6 is ignored because modern operating systems do not need special IPv6 tun handling anymore.");
+        if (!pull_mode)
+        {
+            msg(M_WARN, "Note: option tun-ipv6 is ignored because modern operating systems do not need special IPv6 tun handling anymore.");
+        }
     }
 #ifdef ENABLE_IPROUTE
     else if (streq(p[0], "iproute") && p[1] && !p[2])
@@ -5885,7 +5927,7 @@ add_option(struct options *options,
         VERIFY_PERMISSION(OPT_P_GENERAL|OPT_P_CONNECTION);
         options->ce.remote_port = p[1];
     }
-    else if (streq(p[0], "bind") && !p[1])
+    else if (streq(p[0], "bind") && !p[2])
     {
         VERIFY_PERMISSION(OPT_P_GENERAL|OPT_P_CONNECTION);
         options->ce.bind_defined = true;
@@ -6198,7 +6240,7 @@ add_option(struct options *options,
     else if (streq(p[0], "max-routes") && !p[2])
     {
         msg(M_WARN, "DEPRECATED OPTION: --max-routes option ignored."
-            "The number of routes is unlimited as of version 2.4. "
+            "The number of routes is unlimited as of OpenVPN 2.4. "
             "This option will be removed in a future version, "
             "please remove it from your configuration.");
     }
@@ -6582,6 +6624,7 @@ add_option(struct options *options,
     {
         VERIFY_PERMISSION(OPT_P_GENERAL);
         options->topology = TOP_P2P;
+        msg(M_WARN, "DEPRECATED OPTION: --ifconfig-pool-linear, use --topology p2p instead");
     }
     else if (streq(p[0], "ifconfig-ipv6-pool") && p[1] && !p[2])
     {
@@ -7028,7 +7071,7 @@ add_option(struct options *options,
         VERIFY_PERMISSION(OPT_P_GENERAL);
         if (streq(p[1], "env"))
         {
-            msg(M_INFO, "NOTE: --win-sys env is default from OpenVPN v2.3.	 "
+            msg(M_INFO, "NOTE: --win-sys env is default from OpenVPN 2.3.	 "
                 "This entry will now be ignored.  "
                 "Please remove this entry from your configuration file.");
         }
@@ -7120,6 +7163,7 @@ add_option(struct options *options,
     {
         struct tuntap_options *o = &options->tuntap_options;
         VERIFY_PERMISSION(OPT_P_IPWIN32);
+        bool ipv6dns = false;
 
         if (streq(p[1], "DOMAIN") && p[2])
         {
@@ -7140,22 +7184,17 @@ add_option(struct options *options,
             }
             o->netbios_node_type = t;
         }
-        else if (streq(p[1], "DNS") && p[2])
+        else if ((streq(p[1], "DNS") || streq(p[1], "DNS6")) && p[2] && (!strstr(p[2], ":") || ipv6_addr_safe(p[2])))
         {
-            dhcp_option_address_parse("DNS", p[2], o->dns, &o->dns_len, msglevel);
-        }
-        else if (streq(p[1], "DNS6") && p[2] && ipv6_addr_safe(p[2]))
-        {
-            struct in6_addr addr;
-            foreign_option(options, p, 3, es);
-            if (o->dns6_len >= N_DHCP_ADDR)
+            if (strstr(p[2], ":"))
             {
-                msg(msglevel, "--dhcp-option DNS6: maximum of %d dns servers can be specified",
-                    N_DHCP_ADDR);
+                ipv6dns=true;
+                foreign_option(options, p, 3, es);
+                dhcp_option_dns6_parse(p[2], o->dns6, &o->dns6_len, msglevel);
             }
-            else if (get_ipv6_addr(p[2], &addr, NULL, msglevel))
+            else
             {
-                o->dns6[o->dns6_len++] = addr;
+                dhcp_option_address_parse("DNS", p[2], o->dns, &o->dns_len, msglevel);
             }
         }
         else if (streq(p[1], "WINS") && p[2])
@@ -7183,7 +7222,7 @@ add_option(struct options *options,
         /* flag that we have options to give to the TAP driver's DHCPv4 server
          *  - skipped for "DNS6", as that's not a DHCPv4 option
          */
-        if (!streq(p[1], "DNS6"))
+        if (!ipv6dns)
         {
             o->dhcp_options = true;
         }
@@ -7830,6 +7869,11 @@ add_option(struct options *options,
         VERIFY_PERMISSION(OPT_P_GENERAL);
         options->cipher_list = p[1];
     }
+    else if (streq(p[0], "tls-cert-profile") && p[1] && !p[2])
+    {
+        VERIFY_PERMISSION(OPT_P_GENERAL);
+        options->tls_cert_profile = p[1];
+    }
     else if (streq(p[0], "crl-verify") && p[1] && ((p[2] && streq(p[2], "dir"))
                                                    || (p[2] && streq(p[1], INLINE_FILE_TAG) ) || !p[2]) && !p[3])
     {
@@ -7874,7 +7918,7 @@ add_option(struct options *options,
             msg(msglevel, "you cannot use --compat-names with --verify-x509-name");
             goto err;
         }
-        msg(M_WARN, "DEPRECATED OPTION: --compat-names, please update your configuration. This will be removed in OpenVPN v2.5.");
+        msg(M_WARN, "DEPRECATED OPTION: --compat-names, please update your configuration. This will be removed in OpenVPN 2.5.");
         compat_flag(COMPAT_FLAG_SET | COMPAT_NAMES);
 #if P2MP_SERVER
         if (p[1] && streq(p[1], "no-remapping"))
@@ -7890,7 +7934,7 @@ add_option(struct options *options,
             msg(msglevel, "you cannot use --no-name-remapping with --verify-x509-name");
             goto err;
         }
-        msg(M_WARN, "DEPRECATED OPTION: --no-name-remapping, please update your configuration. This will be removed in OpenVPN v2.5.");
+        msg(M_WARN, "DEPRECATED OPTION: --no-name-remapping, please update your configuration. This will be removed in OpenVPN 2.5.");
         compat_flag(COMPAT_FLAG_SET | COMPAT_NAMES);
         compat_flag(COMPAT_FLAG_SET | COMPAT_NO_NAME_REMAPPING);
 #endif

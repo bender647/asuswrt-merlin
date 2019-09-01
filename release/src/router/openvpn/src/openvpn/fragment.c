@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -208,7 +208,7 @@ fragment_incoming(struct fragment_master *f, struct buffer *buf,
             }
 
             /* is this the first fragment for our sequence number? */
-            if (!frag->defined || (frag->defined && frag->max_frag_size != size))
+            if (!frag->defined || frag->max_frag_size != size)
             {
                 frag->defined = true;
                 frag->max_frag_size = size;

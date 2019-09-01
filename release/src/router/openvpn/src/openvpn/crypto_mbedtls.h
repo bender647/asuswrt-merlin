@@ -5,8 +5,8 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
- *  Copyright (C) 2010-2017 Fox Crypto B.V. <openvpn@fox-it.com>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
+ *  Copyright (C) 2010-2018 Fox Crypto B.V. <openvpn@fox-it.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -85,13 +85,13 @@ typedef mbedtls_md_context_t hmac_ctx_t;
  * added. During initialisation, a personalisation string will be added based
  * on the time, the PID, and a pointer to the random context.
  */
-mbedtls_ctr_drbg_context *rand_ctx_get();
+mbedtls_ctr_drbg_context *rand_ctx_get(void);
 
 #ifdef ENABLE_PREDICTION_RESISTANCE
 /**
  * Enable prediction resistance on the random number generator.
  */
-void rand_ctx_enable_prediction_resistance();
+void rand_ctx_enable_prediction_resistance(void);
 
 #endif
 

@@ -5,8 +5,8 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
- *  Copyright (C) 2010-2017 Fox Crypto B.V. <openvpn@fox-it.com>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
+ *  Copyright (C) 2010-2018 Fox Crypto B.V. <openvpn@fox-it.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -69,7 +69,7 @@
 int mydata_index; /* GLOBAL */
 
 void
-tls_init_lib()
+tls_init_lib(void)
 {
     SSL_library_init();
 #ifndef ENABLE_SMALL
@@ -82,7 +82,7 @@ tls_init_lib()
 }
 
 void
-tls_free_lib()
+tls_free_lib(void)
 {
     EVP_cleanup();
 #ifndef ENABLE_SMALL
@@ -91,7 +91,7 @@ tls_free_lib()
 }
 
 void
-tls_clear_error()
+tls_clear_error(void)
 {
     ERR_clear_error();
 }
@@ -206,16 +206,73 @@ info_callback(INFO_CALLBACK_SSL_CONST SSL *s, int where, int ret)
 int
 tls_version_max(void)
 {
-#if defined(SSL_OP_NO_TLSv1_2)
+#if defined(TLS1_3_VERSION)
+    return TLS_VER_1_3;
+#elif defined(TLS1_2_VERSION) || defined(SSL_OP_NO_TLSv1_2)
     return TLS_VER_1_2;
-#elif defined(SSL_OP_NO_TLSv1_1)
+#elif defined(TLS1_1_VERSION) || defined(SSL_OP_NO_TLSv1_1)
     return TLS_VER_1_1;
 #else
     return TLS_VER_1_0;
 #endif
 }
 
-void
+/** Convert internal version number to openssl version number */
+static int
+openssl_tls_version(int ver)
+{
+    if (ver == TLS_VER_1_0)
+    {
+        return TLS1_VERSION;
+    }
+    else if (ver == TLS_VER_1_1)
+    {
+        return TLS1_1_VERSION;
+    }
+    else if (ver == TLS_VER_1_2)
+    {
+        return TLS1_2_VERSION;
+    }
+#if defined(TLS1_3_VERSION)
+    else if (ver == TLS_VER_1_3)
+    {
+        return TLS1_3_VERSION;
+    }
+#endif
+    return 0;
+}
+
+static bool
+tls_ctx_set_tls_versions(struct tls_root_ctx *ctx, unsigned int ssl_flags)
+{
+    int tls_ver_min = openssl_tls_version(
+        (ssl_flags >> SSLF_TLS_VERSION_MIN_SHIFT) & SSLF_TLS_VERSION_MIN_MASK);
+    int tls_ver_max = openssl_tls_version(
+        (ssl_flags >> SSLF_TLS_VERSION_MAX_SHIFT) & SSLF_TLS_VERSION_MAX_MASK);
+
+    if (!tls_ver_min)
+    {
+        /* Enforce at least TLS 1.0 */
+        int cur_min = SSL_CTX_get_min_proto_version(ctx->ctx);
+        tls_ver_min = cur_min < TLS1_VERSION ? TLS1_VERSION : cur_min;
+    }
+
+    if (!SSL_CTX_set_min_proto_version(ctx->ctx, tls_ver_min))
+    {
+        msg(D_TLS_ERRORS, "%s: failed to set minimum TLS version", __func__);
+        return false;
+    }
+
+    if (tls_ver_max && !SSL_CTX_set_max_proto_version(ctx->ctx, tls_ver_max))
+    {
+        msg(D_TLS_ERRORS, "%s: failed to set maximum TLS version", __func__);
+        return false;
+    }
+
+    return true;
+}
+
+bool
 tls_ctx_set_options(struct tls_root_ctx *ctx, unsigned int ssl_flags)
 {
     ASSERT(NULL != ctx);
@@ -223,41 +280,21 @@ tls_ctx_set_options(struct tls_root_ctx *ctx, unsigned int ssl_flags)
     /* default certificate verification flags */
     int flags = SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
 
-    /* process SSL options including minimum TLS version we will accept from peer */
-    {
-        long sslopt = SSL_OP_SINGLE_DH_USE | SSL_OP_NO_TICKET | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
-        int tls_ver_max = TLS_VER_UNSPEC;
-        const int tls_ver_min =
-            (ssl_flags >> SSLF_TLS_VERSION_MIN_SHIFT) & SSLF_TLS_VERSION_MIN_MASK;
-
-        tls_ver_max =
-            (ssl_flags >> SSLF_TLS_VERSION_MAX_SHIFT) & SSLF_TLS_VERSION_MAX_MASK;
-        if (tls_ver_max <= TLS_VER_UNSPEC)
-        {
-            tls_ver_max = tls_version_max();
-        }
-
-        if (tls_ver_min > TLS_VER_1_0 || tls_ver_max < TLS_VER_1_0)
-        {
-            sslopt |= SSL_OP_NO_TLSv1;
-        }
-#ifdef SSL_OP_NO_TLSv1_1
-        if (tls_ver_min > TLS_VER_1_1 || tls_ver_max < TLS_VER_1_1)
-        {
-            sslopt |= SSL_OP_NO_TLSv1_1;
-        }
-#endif
-#ifdef SSL_OP_NO_TLSv1_2
-        if (tls_ver_min > TLS_VER_1_2 || tls_ver_max < TLS_VER_1_2)
-        {
-            sslopt |= SSL_OP_NO_TLSv1_2;
-        }
+    /* process SSL options */
+    long sslopt = SSL_OP_SINGLE_DH_USE | SSL_OP_NO_TICKET;
+#ifdef SSL_OP_CIPHER_SERVER_PREFERENCE
+    sslopt |= SSL_OP_CIPHER_SERVER_PREFERENCE;
 #endif
 #ifdef SSL_OP_NO_COMPRESSION
-        /* Disable compression - flag not available in OpenSSL 0.9.8 */
-        sslopt |= SSL_OP_NO_COMPRESSION;
+    /* Disable compression - flag not available in OpenSSL 0.9.8 */
+    sslopt |= SSL_OP_NO_COMPRESSION;
 #endif
-        SSL_CTX_set_options(ctx->ctx, sslopt);
+
+    SSL_CTX_set_options(ctx->ctx, sslopt);
+
+    if (!tls_ctx_set_tls_versions(ctx, ssl_flags))
+    {
+        return false;
     }
 
 #ifdef SSL_MODE_RELEASE_BUFFERS
@@ -280,6 +317,8 @@ tls_ctx_set_options(struct tls_root_ctx *ctx, unsigned int ssl_flags)
     SSL_CTX_set_verify(ctx->ctx, flags, verify_callback);
 
     SSL_CTX_set_info_callback(ctx->ctx, info_callback);
+
+    return true;
 }
 
 void
@@ -384,6 +423,40 @@ tls_ctx_restrict_ciphers(struct tls_root_ctx *ctx, const char *ciphers)
 }
 
 void
+tls_ctx_set_cert_profile(struct tls_root_ctx *ctx, const char *profile)
+{
+#ifdef HAVE_SSL_CTX_SET_SECURITY_LEVEL
+    /* OpenSSL does not have certificate profiles, but a complex set of
+     * callbacks that we could try to implement to achieve something similar.
+     * For now, use OpenSSL's security levels to achieve similar (but not equal)
+     * behaviour. */
+    if (!profile || 0 == strcmp(profile, "legacy"))
+    {
+        SSL_CTX_set_security_level(ctx->ctx, 1);
+    }
+    else if (0 == strcmp(profile, "preferred"))
+    {
+        SSL_CTX_set_security_level(ctx->ctx, 2);
+    }
+    else if (0 == strcmp(profile, "suiteb"))
+    {
+        SSL_CTX_set_security_level(ctx->ctx, 3);
+        SSL_CTX_set_cipher_list(ctx->ctx, "SUITEB128");
+    }
+    else
+    {
+        msg(M_FATAL, "ERROR: Invalid cert profile: %s", profile);
+    }
+#else
+    if (profile)
+    {
+        msg(M_WARN, "WARNING: OpenSSL 1.0.1 does not support --tls-cert-profile"
+            ", ignoring user-set profile: '%s'", profile);
+    }
+#endif
+}
+
+void
 tls_ctx_check_cert_time(const struct tls_root_ctx *ctx)
 {
     int ret;
@@ -446,7 +519,7 @@ tls_ctx_load_dh_params(struct tls_root_ctx *ctx, const char *dh_file,
     {
         if (!(bio = BIO_new_mem_buf((char *)dh_file_inline, -1)))
         {
-            crypto_msg(M_FATAL | M_SSL_DH, "Cannot open memory BIO for inline DH parameters");
+            crypto_msg(M_FATAL, "Cannot open memory BIO for inline DH parameters");
         }
     }
     else
@@ -454,7 +527,7 @@ tls_ctx_load_dh_params(struct tls_root_ctx *ctx, const char *dh_file,
         /* Get Diffie Hellman Parameters */
         if (!(bio = BIO_new_file(dh_file, "r")))
         {
-            crypto_msg(M_FATAL | M_SSL_DH, "Cannot open %s for DH parameters", dh_file);
+            crypto_msg(M_FATAL, "Cannot open %s for DH parameters", dh_file);
         }
     }
 
@@ -463,11 +536,11 @@ tls_ctx_load_dh_params(struct tls_root_ctx *ctx, const char *dh_file,
 
     if (!dh)
     {
-        crypto_msg(M_FATAL | M_SSL_DH, "Cannot load DH parameters from %s", dh_file);
+        crypto_msg(M_FATAL, "Cannot load DH parameters from %s", dh_file);
     }
     if (!SSL_CTX_set_tmp_dh(ctx->ctx, dh))
     {
-        crypto_msg(M_FATAL | M_SSL_DH, "SSL_CTX_set_tmp_dh");
+        crypto_msg(M_FATAL, "SSL_CTX_set_tmp_dh");
     }
 
     msg(D_TLS_DEBUG_LOW, "Diffie-Hellman initialized with %d bit key",
@@ -487,15 +560,7 @@ tls_ctx_load_ecdh_params(struct tls_root_ctx *ctx, const char *curve_name
 
     /* Generate a new ECDH key for each SSL session (for non-ephemeral ECDH) */
     SSL_CTX_set_options(ctx->ctx, SSL_OP_SINGLE_ECDH_USE);
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
-    /* OpenSSL 1.0.2 and newer can automatically handle ECDH parameter loading */
-    if (NULL == curve_name)
-    {
-        SSL_CTX_set_ecdh_auto(ctx->ctx, 1);
-        return;
-    }
-#endif
-    /* For older OpenSSL, we'll have to do the parameter loading on our own */
+
     if (curve_name != NULL)
     {
         /* Use user supplied curve if given */
@@ -504,14 +569,17 @@ tls_ctx_load_ecdh_params(struct tls_root_ctx *ctx, const char *curve_name
     }
     else
     {
-        /* Extract curve from key */
+#if OPENSSL_VERSION_NUMBER >= 0x10002000L
+        /* OpenSSL 1.0.2 and newer can automatically handle ECDH parameter
+         * loading */
+        SSL_CTX_set_ecdh_auto(ctx->ctx, 1);
+        return;
+#else
+        /* For older OpenSSL we have to extract the curve from key on our own */
         EC_KEY *eckey = NULL;
         const EC_GROUP *ecgrp = NULL;
         EVP_PKEY *pkey = NULL;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L && !defined(LIBRESSL_VERSION_NUMBER)
-        pkey = SSL_CTX_get0_privatekey(ctx->ctx);
-#else
         /* Little hack to get private key ref from SSL_CTX, yay OpenSSL... */
         SSL *ssl = SSL_new(ctx->ctx);
         if (!ssl)
@@ -520,7 +588,6 @@ tls_ctx_load_ecdh_params(struct tls_root_ctx *ctx, const char *curve_name
         }
         pkey = SSL_get_privatekey(ssl);
         SSL_free(ssl);
-#endif
 
         msg(D_TLS_DEBUG, "Extracting ECDH curve from private key");
 
@@ -529,6 +596,7 @@ tls_ctx_load_ecdh_params(struct tls_root_ctx *ctx, const char *curve_name
         {
             nid = EC_GROUP_get_curve_name(ecgrp);
         }
+#endif
     }
 
     /* Translate NID back to name , just for kicks */
@@ -713,7 +781,7 @@ tls_ctx_add_extra_certs(struct tls_root_ctx *ctx, BIO *bio)
     for (;; )
     {
         cert = NULL;
-        if (!PEM_read_bio_X509(bio, &cert, 0, NULL)) /* takes ownership of cert */
+        if (!PEM_read_bio_X509(bio, &cert, NULL, NULL)) /* takes ownership of cert */
         {
             break;
         }
@@ -809,12 +877,6 @@ tls_ctx_load_cert_file(struct tls_root_ctx *ctx, const char *cert_file,
                        const char *cert_file_inline)
 {
     tls_ctx_load_cert_file_and_copy(ctx, cert_file, cert_file_inline, NULL);
-}
-
-void
-tls_ctx_free_cert_file(X509 *x509)
-{
-    X509_free(x509);
 }
 
 int
@@ -1080,6 +1142,13 @@ tls_ctx_use_external_private_key(struct tls_root_ctx *ctx,
     ASSERT(pkey); /* NULL before SSL_CTX_use_certificate() is called */
     pub_rsa = EVP_PKEY_get0_RSA(pkey);
 
+    /* Certificate might not be RSA but DSA or EC */
+    if (!pub_rsa)
+    {
+        crypto_msg(M_WARN, "management-external-key requires a RSA certificate");
+        goto err;
+    }
+
     /* initialize RSA object */
     const BIGNUM *n = NULL;
     const BIGNUM *e = NULL;
@@ -1099,7 +1168,7 @@ tls_ctx_use_external_private_key(struct tls_root_ctx *ctx,
 
     X509_free(cert);
     RSA_free(rsa); /* doesn't necessarily free, just decrements refcount */
-    return 1;
+    return 0;
 
 err:
     if (cert)
@@ -1114,11 +1183,11 @@ err:
     {
         if (rsa_meth)
         {
-            free(rsa_meth);
+            RSA_meth_free(rsa_meth);
         }
     }
     crypto_msg(M_FATAL, "Cannot enable SSL external private key capability");
-    return 0;
+    return 1;
 }
 
 #endif /* ifdef MANAGMENT_EXTERNAL_KEY */
@@ -1330,7 +1399,7 @@ static time_t biofp_last_open;                 /* GLOBAL */
 static const int biofp_reopen_interval = 600;  /* GLOBAL */
 
 static void
-close_biofp()
+close_biofp(void)
 {
     if (biofp)
     {
@@ -1340,7 +1409,7 @@ close_biofp()
 }
 
 static void
-open_biofp()
+open_biofp(void)
 {
     const time_t current = time(NULL);
     const pid_t pid = getpid();
@@ -1384,23 +1453,6 @@ bio_debug_oc(const char *mode, BIO *bio)
 }
 
 #endif /* ifdef BIO_DEBUG */
-
-/*
- * OpenVPN's interface to SSL/TLS authentication,
- * encryption, and decryption is exclusively
- * through "memory BIOs".
- */
-static BIO *
-getbio(BIO_METHOD *type, const char *desc)
-{
-    BIO *ret;
-    ret = BIO_new(type);
-    if (!ret)
-    {
-        crypto_msg(M_FATAL, "Error creating %s BIO", desc);
-    }
-    return ret;
-}
 
 /*
  * Write to an OpenSSL BIO in non-blocking mode.
@@ -1543,9 +1595,9 @@ key_state_ssl_init(struct key_state_ssl *ks_ssl, const struct tls_root_ctx *ssl_
      * from verify callback*/
     SSL_set_ex_data(ks_ssl->ssl, mydata_index, session);
 
-    ks_ssl->ssl_bio = getbio(BIO_f_ssl(), "ssl_bio");
-    ks_ssl->ct_in = getbio(BIO_s_mem(), "ct_in");
-    ks_ssl->ct_out = getbio(BIO_s_mem(), "ct_out");
+    ASSERT((ks_ssl->ssl_bio = BIO_new(BIO_f_ssl())));
+    ASSERT((ks_ssl->ct_in = BIO_new(BIO_s_mem())));
+    ASSERT((ks_ssl->ct_out = BIO_new(BIO_s_mem())));
 
 #ifdef BIO_DEBUG
     bio_debug_oc("open ssl_bio", ks_ssl->ssl_bio);
@@ -1686,18 +1738,36 @@ print_details(struct key_state_ssl *ks_ssl, const char *prefix)
         EVP_PKEY *pkey = X509_get_pubkey(cert);
         if (pkey != NULL)
         {
-            if (EVP_PKEY_id(pkey) == EVP_PKEY_RSA && EVP_PKEY_get0_RSA(pkey) != NULL)
+            if ((EVP_PKEY_id(pkey) == EVP_PKEY_RSA) && (EVP_PKEY_get0_RSA(pkey) != NULL))
             {
                 RSA *rsa = EVP_PKEY_get0_RSA(pkey);
                 openvpn_snprintf(s2, sizeof(s2), ", %d bit RSA",
                                  RSA_bits(rsa));
             }
-            else if (EVP_PKEY_id(pkey) == EVP_PKEY_DSA && EVP_PKEY_get0_DSA(pkey) != NULL)
+            else if ((EVP_PKEY_id(pkey) == EVP_PKEY_DSA) && (EVP_PKEY_get0_DSA(pkey) != NULL))
             {
                 DSA *dsa = EVP_PKEY_get0_DSA(pkey);
                 openvpn_snprintf(s2, sizeof(s2), ", %d bit DSA",
                                  DSA_bits(dsa));
             }
+#ifndef OPENSSL_NO_EC
+            else if ((EVP_PKEY_id(pkey) == EVP_PKEY_EC) && (EVP_PKEY_get0_EC_KEY(pkey) != NULL))
+            {
+                EC_KEY *ec = EVP_PKEY_get0_EC_KEY(pkey);
+                const EC_GROUP *group = EC_KEY_get0_group(ec);
+                const char* curve;
+
+                int nid = EC_GROUP_get_curve_name(group);
+                if (nid == 0 || (curve = OBJ_nid2sn(nid)) == NULL)
+                {
+                    curve = "Error getting curve name";
+                }
+
+                openvpn_snprintf(s2, sizeof(s2), ", %d bit EC, curve: %s",
+                                 EC_GROUP_order_bits(group), curve);
+
+            }
+#endif
             EVP_PKEY_free(pkey);
         }
         X509_free(cert);
@@ -1708,7 +1778,8 @@ print_details(struct key_state_ssl *ks_ssl, const char *prefix)
 }
 
 void
-show_available_tls_ciphers(const char *cipher_list)
+show_available_tls_ciphers(const char *cipher_list,
+                           const char *tls_cert_profile)
 {
     struct tls_root_ctx tls_ctx;
     SSL *ssl;
@@ -1728,6 +1799,7 @@ show_available_tls_ciphers(const char *cipher_list)
         crypto_msg(M_FATAL, "Cannot create SSL object");
     }
 
+    tls_ctx_set_cert_profile(&tls_ctx, tls_cert_profile);
     tls_ctx_restrict_ciphers(&tls_ctx, cipher_list);
 
     printf("Available TLS Ciphers,\n");
@@ -1758,7 +1830,7 @@ show_available_tls_ciphers(const char *cipher_list)
  * in the OpenSSL library.
  */
 void
-show_available_curves()
+show_available_curves(void)
 {
 #ifndef OPENSSL_NO_EC
     EC_builtin_curve *curves = NULL;

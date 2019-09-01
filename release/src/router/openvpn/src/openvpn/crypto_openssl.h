@@ -5,8 +5,8 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
- *  Copyright (C) 2010-2017 Fox Crypto B.V. <openvpn@fox-it.com>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
+ *  Copyright (C) 2010-2018 Fox Crypto B.V. <openvpn@fox-it.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -91,14 +91,14 @@ void crypto_print_openssl_errors(const unsigned int flags);
  *
  * This is just a convenience wrapper for often occurring situations.
  *
-+ * @param flags         Flags to indicate error type and priority.
-+ * @param format        Format string to print.
-+ * @param format args   (optional) arguments for the format string.
+ * @param flags         Flags to indicate error type and priority.
+ * @param format        Format string to print.
+ * @param format args   (optional) arguments for the format string.
  */
 #define crypto_msg(flags, ...) \
     do { \
         crypto_print_openssl_errors(nonfatal(flags)); \
-        msg((flags | M_SSL), __VA_ARGS__); \
+        msg((flags), __VA_ARGS__); \
     } while (false)
 
 

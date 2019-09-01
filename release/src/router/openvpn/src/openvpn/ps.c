@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -172,7 +172,7 @@ send_control(const socket_descriptor_t fd, int code)
 }
 
 static int
-cmsg_size()
+cmsg_size(void)
 {
     return CMSG_SPACE(sizeof(socket_descriptor_t));
 }
@@ -922,7 +922,7 @@ port_share_open(const char *host,
         openvpn_close_socket(fd[1]);
 
         exit(0);
-        return 0; /* NOTREACHED */
+        return NULL; /* NOTREACHED */
     }
 
 error:

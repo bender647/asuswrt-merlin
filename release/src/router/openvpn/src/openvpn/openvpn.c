@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -33,6 +33,7 @@
 #include "forward.h"
 #include "multi.h"
 #include "win32.h"
+#include "platform.h"
 
 #include "memdbg.h"
 
@@ -47,6 +48,27 @@ process_signal_p2p(struct context *c)
     return process_signal(c);
 }
 
+/* Write our PID to a file */
+static void
+write_pid(const char *filename)
+{
+    if (filename)
+    {
+        unsigned int pid = 0;
+        FILE *fp = platform_fopen(filename, "w");
+        if (!fp)
+        {
+            msg(M_ERR, "Open error on pid file %s", filename);
+        }
+
+        pid = platform_getpid();
+        fprintf(fp, "%u\n", pid);
+        if (fclose(fp))
+        {
+            msg(M_ERR, "Close error on pid file %s", filename);
+        }
+    }
+}
 
 
 /**************************************************************************/

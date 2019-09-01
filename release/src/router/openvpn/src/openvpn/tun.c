@@ -5,7 +5,7 @@
  *             packet encryption, packet authentication, and
  *             packet compression.
  *
- *  Copyright (C) 2002-2017 OpenVPN Technologies, Inc. <sales@openvpn.net>
+ *  Copyright (C) 2002-2018 OpenVPN Inc <sales@openvpn.net>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -38,9 +38,6 @@
 #include "syshead.h"
 
 #include "tun.h"
-#ifndef TUNSETOWNER
-#define TUNSETOWNER     _IOW('T', 204, int)
-#endif
 #ifndef TUNSETGROUP
 #define TUNSETGROUP     _IOW('T', 206, int)
 #endif
@@ -51,6 +48,7 @@
 #include "manage.h"
 #include "route.h"
 #include "win32.h"
+#include "block_dns.h"
 
 #include "memdbg.h"
 
@@ -130,7 +128,7 @@ do_address_service(const bool add, const short family, const struct tuntap *tt)
 
     if (ack.error_number != NO_ERROR)
     {
-        msg(M_WARN, "TUN: %s address failed using service: %s [status=%u if_index=%lu]",
+        msg(M_WARN, "TUN: %s address failed using service: %s [status=%u if_index=%d]",
             (add ? "adding" : "deleting"), strerror_win32(ack.error_number, &gc),
             ack.error_number, addr.iface.index);
         goto out;
@@ -844,6 +842,7 @@ delete_route_connected_v6_net(struct tuntap *tt,
     r6.gateway = tt->local_ipv6;
     r6.metric  = 0;                     /* connected route */
     r6.flags   = RT_DEFINED | RT_ADDED | RT_METRIC_DEFINED;
+    route_ipv6_clear_host_bits(&r6);
     delete_route_ipv6(&r6, tt, 0, es);
 }
 #endif /* if defined(_WIN32) || defined(TARGET_DARWIN) || defined(TARGET_NETBSD) || defined(TARGET_OPENBSD) */
@@ -907,13 +906,6 @@ do_ifconfig(struct tuntap *tt,
          */
         ifconfig_local = print_in_addr_t(tt->local, 0, &gc);
         ifconfig_remote_netmask = print_in_addr_t(tt->remote_netmask, 0, &gc);
-
-        //Sam.B  2013/10/31
-        if(current_addr(htonl(tt->local))) {
-            msg (M_WARN, "ifconfig addr '%s' conflicted", ifconfig_local);
-            update_nvram_status(ADDR_CONFLICTED);
-        }
-        //Sam.E  2013/10/31
 
         if (tt->did_ifconfig_ipv6_setup)
         {
@@ -1875,7 +1867,7 @@ open_tun(const char *dev, const char *dev_type, const char *dev_node, struct tun
     if (oldtunfd >=0 && android_method == ANDROID_OPEN_AFTER_CLOSE)
     {
         close(oldtunfd);
-        openvpn_sleep(2);
+        management_sleep(2);
     }
 
     if (oldtunfd >=0  && android_method == ANDROID_KEEP_OLD_TUN)
@@ -2576,8 +2568,7 @@ open_tun(const char *dev, const char *dev_type, const char *dev_node, struct tun
 
         if (ioctl(tt->fd, TUNGIFINFO, &info) < 0)
         {
-            msg(M_WARN | M_ERRNO, "Can't get interface info: %s",
-                strerror(errno));
+            msg(M_WARN | M_ERRNO, "Can't get interface info");
         }
 
 #ifdef IFF_MULTICAST /* openbsd 4.x doesn't have this */
@@ -2586,8 +2577,7 @@ open_tun(const char *dev, const char *dev_type, const char *dev_node, struct tun
 
         if (ioctl(tt->fd, TUNSIFINFO, &info) < 0)
         {
-            msg(M_WARN | M_ERRNO, "Can't set interface info: %s",
-                strerror(errno));
+            msg(M_WARN | M_ERRNO, "Can't set interface info");
         }
     }
 }
@@ -2676,7 +2666,7 @@ open_tun(const char *dev, const char *dev_type, const char *dev_node, struct tun
             i = 1;
             if (ioctl(tt->fd, TUNSIFHEAD, &i) < 0)      /* multi-af mode on */
             {
-                msg(M_WARN | M_ERRNO, "ioctl(TUNSIFHEAD): %s", strerror(errno));
+                msg(M_WARN | M_ERRNO, "ioctl(TUNSIFHEAD)");
             }
         }
     }
@@ -2809,12 +2799,12 @@ open_tun(const char *dev, const char *dev_type, const char *dev_node, struct tun
 
         if (ioctl(tt->fd, TUNSIFMODE, &i) < 0)
         {
-            msg(M_WARN | M_ERRNO, "ioctl(TUNSIFMODE): %s", strerror(errno));
+            msg(M_WARN | M_ERRNO, "ioctl(TUNSIFMODE)");
         }
         i = 1;
         if (ioctl(tt->fd, TUNSIFHEAD, &i) < 0)
         {
-            msg(M_WARN | M_ERRNO, "ioctl(TUNSIFHEAD): %s", strerror(errno));
+            msg(M_WARN | M_ERRNO, "ioctl(TUNSIFHEAD)");
         }
     }
 }
@@ -3035,16 +3025,14 @@ utun_open_helper(struct ctl_info ctlInfo, int utunnum)
 
     if (fd < 0)
     {
-        msg(M_INFO, "Opening utun (%s): %s", "socket(SYSPROTO_CONTROL)",
-            strerror(errno));
+        msg(M_INFO | M_ERRNO, "Opening utun (socket(SYSPROTO_CONTROL))");
         return -2;
     }
 
     if (ioctl(fd, CTLIOCGINFO, &ctlInfo) == -1)
     {
         close(fd);
-        msg(M_INFO, "Opening utun (%s): %s", "ioctl(CTLIOCGINFO)",
-            strerror(errno));
+        msg(M_INFO | M_ERRNO, "Opening utun (ioctl(CTLIOCGINFO))");
         return -2;
     }
 
@@ -3062,8 +3050,7 @@ utun_open_helper(struct ctl_info ctlInfo, int utunnum)
 
     if (connect(fd, (struct sockaddr *)&sc, sizeof(sc)) < 0)
     {
-        msg(M_INFO, "Opening utun (%s): %s", "connect(AF_SYS_CONTROL)",
-            strerror(errno));
+        msg(M_INFO | M_ERRNO, "Opening utun (connect(AF_SYS_CONTROL))");
         close(fd);
         return -1;
     }
@@ -3808,7 +3795,7 @@ get_panel_reg(struct gc_arena *gc)
 
             if (status != ERROR_SUCCESS || name_type != REG_SZ)
             {
-                dmsg(D_REGISTRY, "Error opening registry key: %s\\%s\\%s",
+                dmsg(D_REGISTRY, "Error opening registry key: %s\\%s\\%ls",
                      NETWORK_CONNECTIONS_KEY, connection_string, name_string);
             }
             else
@@ -4196,15 +4183,12 @@ get_adapter_info_list(struct gc_arena *gc)
     else
     {
         pi = (PIP_ADAPTER_INFO) gc_malloc(size, false, gc);
-        if ((status = GetAdaptersInfo(pi, &size)) == NO_ERROR)
-        {
-            return pi;
-        }
-        else
+        if ((status = GetAdaptersInfo(pi, &size)) != NO_ERROR)
         {
             msg(M_INFO, "GetAdaptersInfo #2 failed (status=%u) : %s",
                 (unsigned int)status,
                 strerror_win32(status, gc));
+            pi = NULL;
         }
     }
     return pi;
@@ -4501,6 +4485,7 @@ adapter_index_of_ip(const IP_ADAPTER_INFO *list,
     struct gc_arena gc = gc_new();
     DWORD ret = TUN_ADAPTER_INDEX_INVALID;
     in_addr_t highest_netmask = 0;
+    int lowest_metric = INT_MAX;
     bool first = true;
 
     if (count)
@@ -4514,9 +4499,14 @@ adapter_index_of_ip(const IP_ADAPTER_INFO *list,
 
         if (is_ip_in_adapter_subnet(list, ip, &hn))
         {
+            int metric = get_interface_metric(list->Index, AF_INET, NULL);
             if (first || hn > highest_netmask)
             {
                 highest_netmask = hn;
+                if (metric >= 0)
+                {
+                    lowest_metric = metric;
+                }
                 if (count)
                 {
                     *count = 1;
@@ -4530,16 +4520,22 @@ adapter_index_of_ip(const IP_ADAPTER_INFO *list,
                 {
                     ++*count;
                 }
+                if (metric >= 0 && metric < lowest_metric)
+                {
+                    ret = list->Index;
+                    lowest_metric = metric;
+                }
             }
         }
         list = list->Next;
     }
 
-    dmsg(D_ROUTE_DEBUG, "DEBUG: IP Locate: ip=%s nm=%s index=%d count=%d",
+    dmsg(D_ROUTE_DEBUG, "DEBUG: IP Locate: ip=%s nm=%s index=%d count=%d metric=%d",
          print_in_addr_t(ip, 0, &gc),
          print_in_addr_t(highest_netmask, 0, &gc),
          (int)ret,
-         count ? *count : -1);
+         count ? *count : -1,
+         lowest_metric);
 
     if (ret == TUN_ADAPTER_INDEX_INVALID && count)
     {
@@ -4640,7 +4636,7 @@ get_adapter_index_method_1(const char *guid)
     DWORD index;
     ULONG aindex;
     wchar_t wbuf[256];
-    _snwprintf(wbuf, SIZE(wbuf), L"\\DEVICE\\TCPIP_%S", guid);
+    swprintf(wbuf, SIZE(wbuf), L"\\DEVICE\\TCPIP_%S", guid);
     wbuf [SIZE(wbuf) - 1] = 0;
     if (GetAdapterIndex(wbuf, &aindex) != NO_ERROR)
     {
@@ -5017,7 +5013,7 @@ netsh_command(const struct argv *a, int n, int msglevel)
     for (i = 0; i < n; ++i)
     {
         bool status;
-        openvpn_sleep(1);
+        management_sleep(1);
         netcmd_semaphore_lock();
         argv_msg_prefix(M_INFO, a, "NETSH");
         status = openvpn_execve_check(a, NULL, 0, "ERROR: netsh command failed");
@@ -5026,7 +5022,7 @@ netsh_command(const struct argv *a, int n, int msglevel)
         {
             return;
         }
-        openvpn_sleep(4);
+        management_sleep(4);
     }
     msg(msglevel, "NETSH: command failed");
 }
@@ -6009,7 +6005,7 @@ open_tun(const char *dev, const char *dev_type, const char *dev_node, struct tun
         if (s > 0)
         {
             msg(M_INFO, "Sleeping for %d seconds...", s);
-            openvpn_sleep(s);
+            management_sleep(s);
         }
     }
 
@@ -6192,6 +6188,9 @@ close_tun(struct tuntap *tt)
     {
         if (tt->did_ifconfig_ipv6_setup)
         {
+            /* remove route pointing to interface */
+            delete_route_connected_v6_net(tt, NULL);
+
             if (tt->options.msg_channel)
             {
                 do_address_service(false, AF_INET6, tt);
@@ -6204,9 +6203,6 @@ close_tun(struct tuntap *tt)
             {
                 const char *ifconfig_ipv6_local;
                 struct argv argv = argv_new();
-
-                /* remove route pointing to interface */
-                delete_route_connected_v6_net(tt, NULL);
 
                 /* "store=active" is needed in Windows 8(.1) to delete the
                  * address we added (pointed out by Cedric Tabary).
