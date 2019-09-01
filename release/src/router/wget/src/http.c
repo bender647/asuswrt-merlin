@@ -1,6 +1,6 @@
 /* HTTP support.
-   Copyright (C) 1996-2012, 2014-2015, 2018 Free Software Foundation,
-   Inc.
+   Copyright (C) 1996-2012, 2014-2015, 2018-2019 Free Software
+   Foundation, Inc.
 
 This file is part of GNU Wget.
 
@@ -71,7 +71,7 @@ as that of the covered work.  */
 #endif
 
 #ifdef TESTING
-#include "test.h"
+#include "../tests/unit-tests.h"
 #endif
 
 #ifdef __VMS
@@ -388,7 +388,7 @@ request_send (const struct request *req, int fd, FILE *warc_tmp)
 }
 
 /* Release the resources used by REQ.
-   It is safe to call it with a vaild pointer to a NULL pointer.
+   It is safe to call it with a valid pointer to a NULL pointer.
    It is not safe to call it with an invalid or NULL pointer.  */
 
 static void
@@ -553,7 +553,7 @@ response_head_terminator (const char *start, const char *peeked, int peeklen)
           return p + 2;
       }
   /* p==end-2: check for \n\n directly preceding END. */
-  if (p[0] == '\n' && p[1] == '\n')
+  if (peeklen >= 2 && p[0] == '\n' && p[1] == '\n')
     return p + 2;
 
   return NULL;
@@ -613,9 +613,9 @@ struct response {
    resp_header_*.  */
 
 static struct response *
-resp_new (const char *head)
+resp_new (char *head)
 {
-  const char *hdr;
+  char *hdr;
   int count, size;
 
   struct response *resp = xnew0 (struct response);
@@ -644,15 +644,26 @@ resp_new (const char *head)
         break;
 
       /* Find the end of HDR, including continuations. */
-      do
+      for (;;)
         {
-          const char *end = strchr (hdr, '\n');
-          if (end)
-            hdr = end + 1;
-          else
-            hdr += strlen (hdr);
+          char *end = strchr (hdr, '\n');
+
+          if (!end)
+            {
+              hdr += strlen (hdr);
+              break;
+            }
+
+          hdr = end + 1;
+
+          if (*hdr != ' ' && *hdr != '\t')
+            break;
+
+          // continuation, transform \r and \n into spaces
+          *end = ' ';
+          if (end > head && end[-1] == '\r')
+            end[-1] = ' ';
         }
-      while (*hdr == ' ' || *hdr == '\t');
     }
   DO_REALLOC (resp->headers, size, count + 1, const char *);
   resp->headers[count] = NULL;
@@ -1066,7 +1077,7 @@ modify_param_name (param_token *name)
   return result;
 }
 
-/* extract_param extract the paramater value into VALUE.
+/* extract_param extract the parameter value into VALUE.
    Like modify_param_name this function modifies VALUE by
    stripping off the encoding information from the actual value
 */
@@ -1344,7 +1355,7 @@ static struct {
   char *host;
   int port;
 
-  /* Whether a ssl handshake has occoured on this connection.  */
+  /* Whether a ssl handshake has occurred on this connection.  */
   bool ssl;
 
   /* Whether the connection was authorized.  This is only done by
@@ -1927,10 +1938,10 @@ initialize_request (const struct url *u, struct http_stat *hs, int *dt, struct u
 
   /* Check for ~/.netrc if none of the above match */
   if (opt.netrc && (!*user || !*passwd))
-    search_netrc (u->host, (const char **) user, (const char **) passwd, 0);
+    search_netrc (u->host, (const char **) user, (const char **) passwd, 0, NULL);
 
   /* We only do "site-wide" authentication with "global" user/password
-   * values unless --auth-no-challange has been requested; URL user/password
+   * values unless --auth-no-challenge has been requested; URL user/password
    * info overrides. */
   if (*user && *passwd && (!u->user || opt.auth_without_challenge))
     {
@@ -2443,6 +2454,8 @@ check_auth (const struct url *u, char *user, char *passwd, struct response *resp
                                               auth_stat);
 
           auth_err = *auth_stat;
+          xfree (auth_stat);
+          xfree (pth);
           if (auth_err == RETROK)
             {
               request_set_header (req, "Authorization", value, rel_value);
@@ -2456,8 +2469,6 @@ check_auth (const struct url *u, char *user, char *passwd, struct response *resp
                   register_basic_auth_host (u->host);
                 }
 
-              xfree (pth);
-              xfree (auth_stat);
               *retry = true;
               goto cleanup;
             }
@@ -3795,7 +3806,7 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
           hs->restval = 0;
 
           /* Normally we are not interested in the response body of a redirect.
-             But if we are writing a WARC file we are: we like to keep everyting.  */
+             But if we are writing a WARC file we are: we like to keep everything.  */
           if (warc_enabled)
             {
               int _err = read_response_body (hs, sock, NULL, contlen, 0,
@@ -3955,16 +3966,6 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
     }
 
   if (statcode == HTTP_STATUS_RANGE_NOT_SATISFIABLE
-      && hs->restval < (contlen + contrange))
-    {
-      /* The file was not completely downloaded,
-         yet the server claims the range is invalid.
-         Bail out.  */
-      CLOSE_INVALIDATE (sock);
-      retval = RANGEERR;
-      goto cleanup;
-    }
-  if (statcode == HTTP_STATUS_RANGE_NOT_SATISFIABLE
       || (!opt.timestamping && hs->restval > 0 && statcode == HTTP_STATUS_OK
           && contrange == 0 && contlen >= 0 && hs->restval >= contlen))
     {
@@ -4112,9 +4113,9 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
   if (opt.enable_xattr)
     {
       if (original_url != u)
-        set_file_metadata (u->url, original_url->url, fp);
+        set_file_metadata (u, original_url, fp);
       else
-        set_file_metadata (u->url, NULL, fp);
+        set_file_metadata (u, NULL, fp);
     }
 #endif
 
@@ -4378,7 +4379,20 @@ http_loop (const struct url *u, struct url *original_url, char **newloc,
           logputs (LOG_VERBOSE, "\n");
           logprintf (LOG_NOTQUIET, _("Cannot write to %s (%s).\n"),
                      quote (hstat.local_file), strerror (errno));
-        case HOSTERR: case CONIMPOSSIBLE: case PROXERR: case SSLINITFAILED:
+          ret = err;
+          goto exit;
+        case HOSTERR:
+          /* Fatal unless option set otherwise. */
+          if ( opt.retry_on_host_error )
+            {
+              printwhat (count, opt.ntry);
+              xfree (hstat.message);
+              xfree (hstat.error);
+              continue;
+            }
+          ret = err;
+          goto exit;
+        case CONIMPOSSIBLE: case PROXERR: case SSLINITFAILED:
         case CONTNOTSUPPORTED: case VERIFCERTERR: case FILEBADFILE:
         case UNKNOWNATTR:
           /* Fatal errors just return from the function.  */
@@ -4484,6 +4498,7 @@ http_loop (const struct url *u, struct url *original_url, char **newloc,
               && (hstat.statcode == 500 || hstat.statcode == 501))
             {
               got_head = true;
+              xfree (hurl);
               continue;
             }
           /* Maybe we should always keep track of broken links, not just in
@@ -4502,6 +4517,7 @@ Remote file does not exist -- broken link!!!\n"));
           else if (check_retry_on_http_error (hstat.statcode))
             {
               printwhat (count, opt.ntry);
+              xfree (hurl);
               continue;
             }
           else
@@ -4594,7 +4610,7 @@ The sizes do not match (local %s) -- retrieving.\n"),
                   bool finished = true;
                   if (opt.recursive)
                     {
-                      if (*dt & TEXTHTML)
+                      if ((*dt & TEXTHTML) || (*dt & TEXTCSS))
                         {
                           logputs (LOG_VERBOSE, _("\
 Remote file exists and could contain links to other resources -- retrieving.\n\n"));
@@ -4609,7 +4625,7 @@ Remote file exists but does not contain any link -- not retrieving.\n\n"));
                     }
                   else
                     {
-                      if (*dt & TEXTHTML)
+                      if ((*dt & TEXTHTML) || (*dt & TEXTCSS))
                         {
                           logprintf (LOG_VERBOSE, _("\
 Remote file exists and could contain further links,\n\
@@ -5349,8 +5365,8 @@ test_parse_content_disposition (void)
     { "attachment; filename=\"file.ext\"", "file.ext", true },
     { "attachment; filename=\"file.ext\"; dummy", "file.ext", true },
     { "attachment", NULL, false },
-    { "attachement; filename*=UTF-8'en-US'hello.txt", "hello.txt", true },
-    { "attachement; filename*0=\"hello\"; filename*1=\"world.txt\"",
+    { "attachment; filename*=UTF-8'en-US'hello.txt", "hello.txt", true },
+    { "attachment; filename*0=\"hello\"; filename*1=\"world.txt\"",
       "helloworld.txt", true },
     { "attachment; filename=\"A.ext\"; filename*=\"B.ext\"", "B.ext", true },
     { "attachment; filename*=\"A.ext\"; filename*0=\"B\"; filename*1=\"B.ext\"",

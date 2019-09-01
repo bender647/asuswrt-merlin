@@ -1,5 +1,5 @@
 # List of files which containing translatable strings.
-# Copyright (C) 1995-2011, 2018 Free Software Foundation, Inc.
+# Copyright (C) 1995-2011, 2018-2019 Free Software Foundation, Inc.
 
 # Package source files
 lib/error.c
@@ -33,6 +33,7 @@ src/ptimer.c
 src/recur.c
 src/res.c
 src/retr.c
+src/spider.c
 src/url.c
 src/utils.c
 src/warc.c

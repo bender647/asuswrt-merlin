@@ -1,6 +1,5 @@
 # Makefile for `Wget' utility
-# Copyright (C) 1995-1997, 2006-2018 Free Software Foundation,
-# Inc.
+# Copyright (C) 1995-1997, 2006-2019 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -41,7 +40,7 @@ distuninstallcheck_listfiles = find . -type f | \
 ACLOCAL_AMFLAGS = -I m4
 
 # subdirectories in the distribution
-SUBDIRS = lib src doc po tests util testenv
+SUBDIRS = lib src doc po util fuzz tests testenv
 
 EXTRA_DIST = MAILING-LIST \
              msdos/config.h msdos/Makefile.DJ \
@@ -49,6 +48,7 @@ EXTRA_DIST = MAILING-LIST \
              build-aux/build_info.pl build-aux/git-version-gen .version
 
 CLEANFILES = *~ *.bak $(DISTNAME).tar.gz
+DISTCLEANFILES = po/stamp-po
 
 BUILT_SOURCES = .version
 

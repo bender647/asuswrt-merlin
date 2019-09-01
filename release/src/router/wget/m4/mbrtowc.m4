@@ -1,5 +1,5 @@
-# mbrtowc.m4 serial 30  -*- coding: utf-8 -*-
-dnl Copyright (C) 2001-2002, 2004-2005, 2008-2018 Free Software Foundation,
+# mbrtowc.m4 serial 31  -*- coding: utf-8 -*-
+dnl Copyright (C) 2001-2002, 2004-2005, 2008-2019 Free Software Foundation,
 dnl Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
@@ -634,6 +634,7 @@ AC_DEFUN([gl_MBRTOWC_C_LOCALE],
 
 # Prerequisites of lib/mbrtowc.c.
 AC_DEFUN([gl_PREREQ_MBRTOWC], [
+  AC_REQUIRE([AC_C_INLINE])
   :
 ])
 

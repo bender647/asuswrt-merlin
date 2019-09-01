@@ -1,5 +1,5 @@
 /* POSIX compatible write() function.
-   Copyright (C) 2008-2018 Free Software Foundation, Inc.
+   Copyright (C) 2008-2019 Free Software Foundation, Inc.
    Written by Bruno Haible <bruno@clisp.org>, 2008.
 
    This program is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@
    GetLastError() = ERROR_NO_DATA, and write() in consequence fails with
    error EINVAL.  */
 
-#if (defined _WIN32 || defined __WIN32__) && ! defined __CYGWIN__
+#if defined _WIN32 && ! defined __CYGWIN__
 
 # include <errno.h>
 # include <signal.h>

@@ -1,5 +1,6 @@
 /* Host name resolution and matching.
-   Copyright (C) 1996-2012, 2015, 2018 Free Software Foundation, Inc.
+   Copyright (C) 1996-2012, 2015, 2018-2019 Free Software Foundation,
+   Inc.
 
 This file is part of GNU Wget.
 
@@ -731,6 +732,8 @@ wait_ares (ares_channel channel)
       else
         ares_process (channel, &read_fds, &write_fds);
     }
+  if (timer)
+    ptimer_destroy (timer);
 }
 
 static void
@@ -1031,8 +1034,9 @@ sufmatch (const char **list, const char *what)
       /* Domain or subdomain match
        * k == -1: exact match
        * k >= 0 && what[k] == '.': subdomain match
+       * k >= 0 && list[i][0] == '.': dot-prefixed subdomain match
        */
-      if (j == -1 && (k == -1 || what[k] == '.'))
+      if (j == -1 && (k == -1 || what[k] == '.' || list[i][0] == '.'))
         return true;
     }
 

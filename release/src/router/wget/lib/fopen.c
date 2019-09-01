@@ -1,5 +1,5 @@
 /* Open a stream to a file.
-   Copyright (C) 2007-2018 Free Software Foundation, Inc.
+   Copyright (C) 2007-2019 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@ orig_fopen (const char *filename, const char *mode)
 FILE *
 rpl_fopen (const char *filename, const char *mode)
 {
-#if (defined _WIN32 || defined __WIN32__) && ! defined __CYGWIN__
+#if defined _WIN32 && ! defined __CYGWIN__
   if (strcmp (filename, "/dev/null") == 0)
     filename = "NUL";
 #endif

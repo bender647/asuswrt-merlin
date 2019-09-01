@@ -1,6 +1,6 @@
 /* mswindows.c -- Windows-specific support
-   Copyright (C) 1996-2011, 2014-2015, 2018 Free Software Foundation,
-   Inc.
+   Copyright (C) 1996-2011, 2014-2015, 2018-2019 Free Software
+   Foundation, Inc.
 
 This file is part of GNU Wget.
 
@@ -312,7 +312,7 @@ cleanup:
 
 /* This is the corresponding Windows implementation of the
    fork_to_background() function in utils.c.  */
-void
+bool
 fork_to_background (void)
 {
   int rv;
@@ -332,6 +332,7 @@ fork_to_background (void)
       abort ();
     }
   /* If we get here, we're the child.  */
+  return false;
 }
 
 static BOOL WINAPI

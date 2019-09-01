@@ -1,4 +1,4 @@
-/* Copyright (C) 2002, 2004-2005, 2007, 2009-2018 Free Software Foundation,
+/* Copyright (C) 2002, 2004-2005, 2007, 2009-2019 Free Software Foundation,
    Inc.
    This file is part of the GNU C Library.
 
@@ -277,7 +277,7 @@ __strptime_internal (rp, fmt, tm, decided, era_cnt LOCALE_PARAM)
         }
 
       /* Any character but '%' must be matched by the same character
-         in the iput string.  */
+         in the input string.  */
       if (*fmt != '%')
         {
           match_char (*fmt++, *rp++);

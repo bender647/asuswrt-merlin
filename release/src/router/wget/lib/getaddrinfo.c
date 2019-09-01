@@ -1,5 +1,5 @@
 /* Get address information (partial implementation).
-   Copyright (C) 1997, 2001-2002, 2004-2018 Free Software Foundation, Inc.
+   Copyright (C) 1997, 2001-2002, 2004-2019 Free Software Foundation, Inc.
    Contributed by Simon Josefsson <simon@josefsson.org>.
 
    This program is free software; you can redistribute it and/or modify
@@ -54,7 +54,7 @@
 # define PF_UNSPEC 0
 #endif
 
-#if (defined _WIN32 || defined __WIN32__) && !defined __CYGWIN__
+#if defined _WIN32 && !defined __CYGWIN__
 # define WINDOWS_NATIVE
 #endif
 
@@ -62,6 +62,11 @@
 #include "sockets.h"
 
 #ifdef WINDOWS_NATIVE
+
+/* Avoid warnings from gcc -Wcast-function-type.  */
+# define GetProcAddress \
+   (void *) GetProcAddress
+
 typedef int (WSAAPI *getaddrinfo_func) (const char*, const char*,
                                         const struct addrinfo*,
                                         struct addrinfo**);

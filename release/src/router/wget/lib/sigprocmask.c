@@ -1,5 +1,5 @@
 /* POSIX compatible signal blocking.
-   Copyright (C) 2006-2018 Free Software Foundation, Inc.
+   Copyright (C) 2006-2019 Free Software Foundation, Inc.
    Written by Bruno Haible <bruno@clisp.org>, 2006.
 
    This program is free software: you can redistribute it and/or modify
@@ -50,7 +50,7 @@
 /* On native Windows, as of 2008, the signal SIGABRT_COMPAT is an alias
    for the signal SIGABRT.  Only one signal handler is stored for both
    SIGABRT and SIGABRT_COMPAT.  SIGABRT_COMPAT is not a signal of its own.  */
-#if (defined _WIN32 || defined __WIN32__) && ! defined __CYGWIN__
+#if defined _WIN32 && ! defined __CYGWIN__
 # undef SIGABRT_COMPAT
 # define SIGABRT_COMPAT 6
 #endif

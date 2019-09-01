@@ -1,5 +1,5 @@
 /* Creation of subprocesses, communicating via pipes.
-   Copyright (C) 2001-2003, 2006, 2008-2018 Free Software Foundation, Inc.
+   Copyright (C) 2001-2003, 2006, 2008-2019 Free Software Foundation, Inc.
    Written by Bruno Haible <haible@clisp.cons.org>, 2001.
 
    This program is free software: you can redistribute it and/or modify
@@ -130,7 +130,7 @@ extern pid_t create_pipe_bidi (const char *progname,
                                int fd[2]);
 
 /* The name of the "always silent" device.  */
-#if (defined _WIN32 || defined __WIN32__) && ! defined __CYGWIN__
+#if defined _WIN32 && ! defined __CYGWIN__
 /* Native Windows API.  */
 # define DEV_NULL "NUL"
 #else

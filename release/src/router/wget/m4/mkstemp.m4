@@ -1,6 +1,6 @@
-#serial 25
+#serial 26
 
-# Copyright (C) 2001, 2003-2007, 2009-2018 Free Software Foundation, Inc.
+# Copyright (C) 2001, 2003-2007, 2009-2019 Free Software Foundation, Inc.
 # This file is free software; the Free Software Foundation
 # gives unlimited permission to copy and/or distribute it,
 # with or without modifications, as long as this notice is preserved.
@@ -59,6 +59,8 @@ AC_DEFUN([gl_FUNC_MKSTEMP],
           [case "$host_os" in
                             # Guess yes on glibc systems.
              *-gnu* | gnu*) gl_cv_func_working_mkstemp="guessing yes" ;;
+                            # Guess yes on musl systems.
+             *-musl*)       gl_cv_func_working_mkstemp="guessing yes" ;;
                             # Guess no on native Windows.
              mingw*)        gl_cv_func_working_mkstemp="guessing no" ;;
                             # If we don't know, assume the worst.
